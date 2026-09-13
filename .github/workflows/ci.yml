@@ -1,0 +1,186 @@
+name: CI
+
+# Runs on every push and every pull request into the shared branches.
+# A pull request cannot be merged until all three jobs below are green.
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+# Cancel an in-progress run when the same branch is pushed again.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '20'
+
+jobs:
+  backend:
+    name: Backend (lint, types, tests)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: csp
+          POSTGRES_PASSWORD: csp
+          POSTGRES_DB: csp
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql+psycopg://csp:csp@localhost:5432/csp
+      JWT_SECRET: ci-only-secret-value-long-enough-for-hs256-signing
+      # CI never calls a paid model provider. The mock provider implements the
+      # same interface, so the full conversation path is still exercised.
+      AI_PROVIDER: mock
+      ENVIRONMENT: ci
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Lint (ruff)
+        run: ruff check .
+
+      - name: Format check (ruff)
+        run: ruff format --check .
+
+      - name: Type check (mypy)
+        run: mypy app
+
+      - name: Apply schema and seed synthetic data
+        run: python -m app.bootstrap
+
+      - name: Tests (pytest against PostgreSQL)
+        run: pytest -q
+
+  frontend:
+    name: Frontend (lint, tests, build)
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint (eslint)
+        run: npm run lint
+
+      - name: Tests (vitest)
+        run: npm test
+
+      - name: Production build
+        run: npm run build
+
+      - name: Upload build output
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          retention-days: 7
+
+  integration:
+    name: Integration smoke test
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: csp
+          POSTGRES_PASSWORD: csp
+          POSTGRES_DB: csp
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql+psycopg://csp:csp@localhost:5432/csp
+      JWT_SECRET: ci-only-secret-value-long-enough-for-hs256-signing
+      AI_PROVIDER: mock
+      ENVIRONMENT: ci
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Prepare database
+        working-directory: backend
+        run: python -m app.bootstrap
+
+      - name: Start the application
+        working-directory: backend
+        run: |
+          nohup python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > server.log 2>&1 &
+          for attempt in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:8000/api/v1/health > /dev/null; then
+              echo "application is up"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "application failed to start"
+          cat server.log
+          exit 1
+
+      - name: Exercise the end-to-end conversation path
+        working-directory: backend
+        run: bash ../scripts/smoke_test.sh
+
+      - name: Run the Learning Analytics Worker
+        working-directory: backend
+        run: python -m app.modules.analytics.worker
+
+      - name: Dump server log on failure
+        if: failure()
+        working-directory: backend
+        run: cat server.log
