@@ -6,11 +6,9 @@ A modular monolith (FastAPI + PostgreSQL) with a React client, an isolated AI
 Integration Module, deterministic human-escalation rules, and asynchronous
 feedback analysis. Everything in this repository uses synthetic data only.
 
-| Role | Owner | Area |
-| --- | --- | --- |
 | Lead Architect | Ravonne Wade | Architecture, component boundaries, data flow |
 | Interface Designer | Ryan Gant | API contracts, component interfaces, validation, error handling |
-| Integration Lead | Benjamin Madden | AI chatbot integration, escalation path, feedback/learning loop |
+| Integration Lead | Benjamin Madden | AI chatbot integration, escalation path |
 
 ---
 
