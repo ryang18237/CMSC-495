@@ -10,8 +10,6 @@ feedback analysis. Everything in this repository uses synthetic data only.
 | Interface Designer | Ryan Gant | API contracts, component interfaces, validation, error handling |
 | Integration Lead | Benjamin Madden | AI chatbot integration, escalation path |
 
----
-
 ## What works in the Alpha
 
 - **Multi-module integration** — one customer message travels through
@@ -30,8 +28,6 @@ feedback analysis. Everything in this repository uses synthetic data only.
   Worker.
 
 Known Alpha limitations are listed at the bottom of this file.
-
----
 
 ## Local setup (macOS)
 
@@ -85,18 +81,6 @@ Sign in as the customer to use the chat; sign in as the agent to see the
 escalation queue. Override the password with `SEED_PASSWORD` before running
 `python -m app.bootstrap`.
 
-### Try the escalation paths
-
-| Type this in the chat | What happens |
-| --- | --- |
-| `Why was I charged twice for my order?` | `ANSWERED` from the knowledge base |
-| `I want to speak to a human` | `ESCALATED` / `CUSTOMER_REQUEST` — never reaches the model |
-| `There is a fraudulent charge on my account` | `ESCALATED` / `SECURITY_CONCERN` |
-| `What is the capital of France?` | `ESCALATED` / `UNSUPPORTED_TOPIC` |
-| `question __force_ai_failure__` | `ESCALATED` / `AI_SERVICE_FAILURE` with a safe fallback |
-
----
-
 ## Running the checks locally
 
 Run these before pushing; they are exactly what CI runs.
@@ -124,8 +108,6 @@ The asynchronous worker is run on demand:
 ```bash
 cd backend && python -m app.modules.analytics.worker
 ```
-
----
 
 ## Repository layout
 
@@ -161,8 +143,6 @@ docs/
   SECURITY.md                  Secret handling and access rules
 scripts/smoke_test.sh    End-to-end integration check used by CI
 ```
-
----
 
 ## Alpha limitations (deliberate)
 
