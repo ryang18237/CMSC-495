@@ -6,33 +6,44 @@ import { api } from './api/client.js'
 
 const SESSION_KEY = 'csp.session'
 
-function readStoredSession() {
-  try {
+function readStoredSession()
+{
+  try
+  {
     const raw = window.sessionStorage.getItem(SESSION_KEY)
     return raw ? JSON.parse(raw) : null
-  } catch {
+  }
+  catch
+  {
     return null
   }
 }
 
-export default function App() {
+export default function App()
+{
   const [session, setSession] = useState(readStoredSession)
   const [health, setHealth] = useState(null)
 
-  useEffect(() => {
+  useEffect(() =>
+  {
     api.health().then(setHealth).catch(() => setHealth({ status: 'unreachable' }))
   }, [])
 
-  useEffect(() => {
-    try {
+  useEffect(() =>
+  {
+    try
+    {
       if (session) window.sessionStorage.setItem(SESSION_KEY, JSON.stringify(session))
       else window.sessionStorage.removeItem(SESSION_KEY)
-    } catch {
+    }
+    catch
+    {
       // Storage is a convenience only; the app works without it.
     }
   }, [session])
 
-  if (!session) {
+  if (!session)
+  {
     return (
       <main className="shell centered">
         <LoginPanel onSignedIn={setSession} />
@@ -43,7 +54,7 @@ export default function App() {
   return (
     <main className="shell">
       <nav className="topbar">
-        <span className="brand">Customer Service Platform</span>
+        <span className="brand">SkillBridge AI</span>
         <span className="muted">
           {session.displayName} &middot; {session.role}
         </span>
