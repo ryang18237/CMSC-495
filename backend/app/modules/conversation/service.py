@@ -22,6 +22,7 @@ from app.modules.customer_data.adapter import CustomerDataAdapter, classify_inqu
 from app.modules.escalation.rules import ACKNOWLEDGEMENT, detect_pre_ai_reason
 from app.modules.escalation.service import EscalationService
 from app.modules.knowledge.service import KnowledgeBaseService
+from app.modules.monitoring.service import get_metrics
 from app.modules.validation.service import ResponseValidationService
 from app.schemas import ChatResponse, EscalationReason, MessageStatus
 
@@ -98,6 +99,9 @@ class ConversationService:
         settings = get_settings()
         started = time.monotonic()
 
+        # Validate before anything is written or any module is called. A bad
+        # message should cost one rejected request, not a database row and a
+        # provider call.
         cleaned = message.strip()
         if not cleaned or len(cleaned) > settings.max_message_length:
             raise UnprocessableError(
@@ -105,6 +109,9 @@ class ConversationService:
                 code="INVALID_MESSAGE",
             )
 
+        # Ownership is checked here, once, by loading through the same method
+        # the read endpoint uses. Duplicating the check would eventually mean
+        # two versions of it that disagree.
         conversation = self.get_conversation(conversation_id, user_id)
         if conversation.status == "CLOSED":
             raise ConflictError(
@@ -112,6 +119,8 @@ class ConversationService:
                 code="CONVERSATION_CLOSED",
             )
 
+        # Saved before the assistant is involved, so the member's question
+        # survives even if the rest of the turn fails.
         self.save_message(conversation.id, "CUSTOMER", cleaned)
 
         # Rule 1 -- security-sensitive content and explicit requests for a
@@ -135,6 +144,10 @@ class ConversationService:
         )
 
         result = self._ai.generate_response(context)
+
+        # Generation and judgement are separate on purpose. Validation decides
+        # what a member is allowed to see, so it must be testable without a
+        # model and unaffected by swapping providers.
         validation = self._validation.validate_response(result)
         decision = self._validation.requires_escalation(result, validation)
 
@@ -188,7 +201,7 @@ class ConversationService:
             status=MessageStatus.ESCALATED.value,
             escalation_reason=reason.value,
         )
-        self._log_latency(conversation.id, started, MessageStatus.ESCALATED.value)
+        self._log_latency(conversation.id, started, MessageStatus.ESCALATED.value, reason.value)
 
         return ChatResponse(
             conversation_id=conversation.id,
@@ -200,31 +213,55 @@ class ConversationService:
         )
 
     def _recent_history(self, conversation_id: uuid.UUID) -> list[tuple[str, str]]:
+        """Recent turns, formatted for the AI module.
+
+        The member's newest message is excluded because `process_message` has
+        already saved it and passes it separately as the turn being answered --
+        including it here would send it twice.
+        """
         rows = list(
             self._db.query(ConversationMessage)
             .filter(ConversationMessage.conversation_id == conversation_id)
             .order_by(ConversationMessage.created_at)
             .all()
         )
-        # Exclude the message just saved; it is supplied separately as the turn.
+
         history: list[tuple[str, str]] = []
         for row in rows[:-1]:
+            # A counsellor's reply is part of the conversation the member can
+            # see, so it belongs in the history; from the model's point of view
+            # it is simply a previous non-member turn.
             role = "user" if row.sender == "CUSTOMER" else "assistant"
             history.append((role, row.content))
+
+        # Six turns keeps the prompt small and bounded. Longer context costs
+        # more and has not been shown to help for questions of this kind.
         return history[-6:]
 
     @staticmethod
-    def _log_latency(conversation_id: uuid.UUID, started: float, status: str) -> None:
+    def _log_latency(
+        conversation_id: uuid.UUID,
+        started: float,
+        status: str,
+        escalation_reason: str | None = None,
+    ) -> None:
         elapsed = time.monotonic() - started
-        level = logging.WARNING if elapsed > RESPONSE_TARGET_SECONDS else logging.INFO
+        elapsed_ms = int(elapsed * 1000)
+        over_target = elapsed > RESPONSE_TARGET_SECONDS
+
         logger.log(
-            level,
+            logging.WARNING if over_target else logging.INFO,
             "turn complete conversation=%s status=%s elapsed_ms=%d target_ms=%d",
             conversation_id,
             status,
-            int(elapsed * 1000),
+            elapsed_ms,
             int(RESPONSE_TARGET_SECONDS * 1000),
         )
+
+        metrics = get_metrics()
+        metrics.record_turn(status, elapsed_ms, escalation_reason)
+        if over_target:
+            metrics.record_slow_turn()
 
 
 def _as_utc(value: datetime) -> datetime:

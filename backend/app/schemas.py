@@ -62,6 +62,18 @@ class FeedbackRating(str, Enum):
     UNHELPFUL = "UNHELPFUL"
 
 
+class ReviewStatus(str, Enum):
+    """Lifecycle of a Learning Analytics recommendation.
+
+    Nothing reaches the production AI without an explicit APPROVED decision --
+    the "approved changes only" constraint in the architecture diagram.
+    """
+
+    PENDING_REVIEW = "PENDING_REVIEW"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+
+
 # --------------------------------------------------------------------------
 # Authentication
 # --------------------------------------------------------------------------
@@ -190,4 +202,30 @@ class HealthResponse(ApiModel):
     status: str
     timestamp: datetime
     version: str
+    instance_id: str
     dependencies: dict[str, str]
+
+
+# --------------------------------------------------------------------------
+# Reviewed AI configuration (agent-facing)
+# --------------------------------------------------------------------------
+class RecommendationView(ApiModel):
+    recommendation_id: uuid.UUID
+    category: str
+    detail: str
+    occurrences: int
+    review_status: ReviewStatus
+    period_start: datetime
+    period_end: datetime
+    created_at: datetime
+
+
+class RecommendationDecisionRequest(ApiModel):
+    review_status: ReviewStatus
+
+
+class AnalyticsRunResponse(ApiModel):
+    """Result of running the Learning Analytics Worker on demand."""
+
+    recommendations_created: int
+    ran_at: datetime

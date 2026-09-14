@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.db import get_db
 from app.modules.ai_integration.service import AIIntegrationService
+from app.modules.cache.service import get_cache
+from app.modules.monitoring.service import INSTANCE_ID
 from app.schemas import HealthResponse
 
 router = APIRouter(prefix="/api/v1", tags=["health"])
@@ -24,10 +26,15 @@ def health(response: Response, db: Session = Depends(get_db)) -> HealthResponse:
         dependencies["database"] = "ok"
     except Exception:
         dependencies["database"] = "unavailable"
+    dependencies["database_engine"] = settings.database_engine
 
     ai_service = AIIntegrationService()
     dependencies["ai_provider"] = ai_service.provider_health()
     dependencies["ai_provider_name"] = ai_service.provider_name
+
+    cache = get_cache()
+    dependencies["cache"] = cache.health()
+    dependencies["cache_implementation"] = cache.name
 
     if dependencies["database"] != "ok":
         status = "unavailable"
@@ -42,5 +49,6 @@ def health(response: Response, db: Session = Depends(get_db)) -> HealthResponse:
         status=status,
         timestamp=datetime.now(timezone.utc),
         version=settings.app_version,
+        instance_id=INSTANCE_ID,
         dependencies=dependencies,
     )

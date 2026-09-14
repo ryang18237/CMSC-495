@@ -7,17 +7,55 @@ turn delegate to the core modules.
 
 import logging
 import uuid
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse, Response
 
-from app.api.v1 import agent, auth, conversations, health
+from app.api.v1 import agent, auth, conversations, health, ops
 from app.config import get_settings
 from app.errors import error_body, register_exception_handlers
+from app.modules.monitoring.service import get_metrics
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+logger = logging.getLogger("app.startup")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Prepare the data layer before the first request.
+
+    This only runs when `AUTO_BOOTSTRAP` is enabled (the default for local
+    development). Both steps are idempotent: the schema is created if absent
+    and seed rows are inserted only when missing. CI and deployments call
+    `python -m app.bootstrap` as an explicit step and set AUTO_BOOTSTRAP=false.
+    """
+    settings = get_settings()
+    if settings.auto_bootstrap:
+        from app.bootstrap import create_schema, seed
+        from app.db import SessionLocal
+
+        try:
+            create_schema()
+            session = SessionLocal()
+            try:
+                seed(session)
+            finally:
+                session.close()
+            logger.info(
+                "data layer ready (%s), seeded demo accounts available",
+                settings.database_engine,
+            )
+        except Exception as exc:  # startup must explain itself, not crash silently
+            logger.error(
+                "could not prepare the database: %s. "
+                "Check DATABASE_URL, or run `python run.py` which selects a "
+                "working database for you.",
+                exc,
+            )
+    yield
 
 
 def create_app() -> FastAPI:
@@ -25,9 +63,12 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title=settings.app_name,
         version=settings.app_version,
+        lifespan=lifespan,
         description=(
-            "Alpha release. Modular monolith with an isolated AI Integration Module, "
-            "deterministic escalation rules and asynchronous feedback analysis."
+            "Alpha release. A free education and professional development service for "
+            "military members and veterans. Modular monolith with an isolated AI "
+            "Integration Module, deterministic escalation rules and asynchronous "
+            "feedback analysis."
         ),
     )
 
@@ -62,6 +103,9 @@ def create_app() -> FastAPI:
 
         response = await call_next(request)
         response.headers["X-Request-ID"] = request_id
+        # The Monitoring component observes the entry point rather than
+        # reaching into the modules behind it.
+        get_metrics().record_request(response.status_code)
         return response
 
     register_exception_handlers(app)
@@ -70,6 +114,7 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(conversations.router)
     app.include_router(agent.router)
+    app.include_router(ops.router)
 
     return app
 
