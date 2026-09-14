@@ -28,6 +28,9 @@ def hash_password(plain: str) -> str:
 
 
 def verify_password(plain: str, hashed: str) -> bool:
+    # bcrypt raises on a malformed hash. That is a corrupt row rather than a
+    # correct password, so it is treated as a failed check rather than allowed
+    # to surface as a 500.
     try:
         return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
     except ValueError:
@@ -63,6 +66,13 @@ def _decode(token: str) -> dict[str, Any]:
 
 
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
+    """Resolve the signed-in user from the bearer token.
+
+    The user is re-loaded from the database on every request rather than
+    trusted from the token body. A token stays valid until it expires, so a
+    deleted or role-changed account would otherwise keep its old access for up
+    to an hour.
+    """
     header = request.headers.get("Authorization", "")
     if not header.lower().startswith("bearer "):
         raise UnauthorizedError("Authorization header with a Bearer token is required.")

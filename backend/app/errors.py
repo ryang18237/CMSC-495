@@ -136,7 +136,10 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(Exception)
     async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
-        # Internal details are logged, never returned to the client.
+        # Last resort for anything not raised deliberately. The response is
+        # generic on purpose: a stack trace or a database message tells an
+        # attacker about the system and tells the member nothing. The request
+        # id is the thread back to the server log.
         return JSONResponse(
             status_code=500,
             content=error_body(

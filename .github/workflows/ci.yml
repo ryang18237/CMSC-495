@@ -44,6 +44,9 @@ jobs:
       # same interface, so the full conversation path is still exercised.
       AI_PROVIDER: mock
       ENVIRONMENT: ci
+      # The pipeline prepares the database as an explicit, visible step rather
+      # than relying on the convenience bootstrap used for local runs.
+      AUTO_BOOTSTRAP: "false"
 
     defaults:
       run:
@@ -139,6 +142,9 @@ jobs:
       JWT_SECRET: ci-only-secret-value-long-enough-for-hs256-signing
       AI_PROVIDER: mock
       ENVIRONMENT: ci
+      # The pipeline prepares the database as an explicit, visible step rather
+      # than relying on the convenience bootstrap used for local runs.
+      AUTO_BOOTSTRAP: "false"
 
     steps:
       - uses: actions/checkout@v4

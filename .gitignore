@@ -25,12 +25,19 @@ vite.config.ts.timestamp-*
 *.key
 secrets.json
 
-# Local databases
+# Local databases and the locally generated development signing secret
 *.sqlite3
 *.db
+.jwt_secret
 
 # OS / editor
 .DS_Store
 .idea/
 .vscode/
 *.swp
+
+# Work handed to another team member to commit under their own name. These stay
+# out of the repository so the commit lands under its author, not whoever
+# happened to be holding the files.
+handoff-benjamin/
+handoff-ravonne/
