@@ -41,3 +41,6 @@ secrets.json
 # happened to be holding the files.
 handoff-benjamin/
 handoff-ravonne/
+
+# Draft PR text, pasted into GitHub rather than committed
+PULL_REQUEST.md
