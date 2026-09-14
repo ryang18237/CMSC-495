@@ -10,7 +10,7 @@ other module depends on the legacy shape.
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db import GUID, Base
@@ -84,7 +84,9 @@ class EscalationCase(Base):
     reason: Mapped[str] = mapped_column(String(40), nullable=False)
     # QUEUED, ASSIGNED, RESOLVED or CLOSED
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="QUEUED")
-    queue: Mapped[str] = mapped_column(String(40), nullable=False, default="CUSTOMER_SUPPORT")
+    # The default matches EscalationService.DEFAULT_QUEUE; the service sets it
+    # explicitly on every case, so this only covers a row created by hand.
+    queue: Mapped[str] = mapped_column(String(40), nullable=False, default="CAREER_COUNSELING")
     summary: Mapped[str] = mapped_column(Text, nullable=False, default="")
     assigned_agent_id: Mapped[uuid.UUID | None] = mapped_column(GUID, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
@@ -146,20 +148,40 @@ class KnowledgeArticle(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
-class LegacyCustomerMaster(Base):
-    """Stand-in for the pre-existing customer database.
+class LegacyMemberMaster(Base):
+    """Stand-in for the existing personnel system of record.
 
-    Column names are intentionally legacy-styled. Only the Customer Data
-    Adapter is permitted to read this table.
+    The column names are abbreviated and the two list columns are semicolon
+    delimited because that is what records from an older system actually look
+    like. Untangling that is the entire job of the Customer Data Adapter, and
+    only the adapter is allowed to read this table -- if these names ever leaked
+    into the rest of the application, a schema change over there would become a
+    change everywhere.
+
+    Every row is synthetic. No real service member's information appears
+    anywhere in this repository.
     """
 
-    __tablename__ = "legacy_customer_master"
+    __tablename__ = "legacy_member_master"
 
-    cust_nbr: Mapped[str] = mapped_column(String(20), primary_key=True)
+    mbr_nbr: Mapped[str] = mapped_column(String(20), primary_key=True)
     app_user_id: Mapped[uuid.UUID] = mapped_column(GUID, nullable=False, index=True)
-    acct_stat_cd: Mapped[str] = mapped_column(String(2), nullable=False, default="A")
-    plan_cd: Mapped[str] = mapped_column(String(10), nullable=False, default="STD")
-    lst_ordr_id: Mapped[str | None] = mapped_column(String(30), nullable=True)
-    lst_ordr_amt: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
-    lst_ordr_dt: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    open_tkt_cnt: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    # Branch of service and pay grade, as the legacy system codes them.
+    svc_brnch_cd: Mapped[str] = mapped_column(String(8), nullable=False, default="ARMY")
+    pay_grd_cd: Mapped[str] = mapped_column(String(6), nullable=False, default="E5")
+
+    # Occupational specialty code. Each branch uses its own scheme, which is
+    # why the adapter carries a lookup rather than showing the raw code.
+    occ_spec_cd: Mapped[str] = mapped_column(String(12), nullable=False, default="25B")
+
+    svc_yrs: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    sep_dt: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Semicolon delimited. The whole point of the platform is grounding advice
+    # in what the member has already finished, so these two columns are the
+    # most important thing the adapter translates.
+    cmpltd_trng_txt: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    cred_erned_txt: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+    open_case_cnt: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

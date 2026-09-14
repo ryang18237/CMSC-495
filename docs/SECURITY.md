@@ -13,12 +13,56 @@ matter in practice.
   python -c "import secrets; print(secrets.token_urlsafe(48))"
   ```
 
+- **Development runs generate one for you.** With `ENVIRONMENT=development` and
+  no `JWT_SECRET` set, the application writes a random secret to
+  `backend/.jwt_secret` (git-ignored) and reuses it, so tokens survive a
+  reload. It never leaves your machine. Any deployment and CI must set
+  `JWT_SECRET` explicitly — the generated file is a local convenience, not a
+  key-management strategy.
+
 - **API keys go in your local `.env` or a GitHub Actions secret**, never in
   code, never in a test fixture, never in a commit message.
 - CI runs with `AI_PROVIDER=mock` and needs no model credentials.
 - If a secret is ever committed, rotate it first and rewrite history second —
   rotation is what actually protects you, because the value is already on
   someone's machine.
+
+## API keys in a shared private repository
+
+**A key in `.env` is private to your own machine. A key committed to the
+repository is visible to every collaborator, permanently.**
+
+`backend/.env` is git-ignored, so a key placed there never leaves your laptop.
+That is the correct place for it. What does *not* work is trying to share one
+key through the repository — there is no way to commit a value that some
+collaborators can read and others cannot. Private means private *from the
+public*, not private *between the three of us*.
+
+So: **each team member uses their own API key from their own account.** Get one
+at <https://console.anthropic.com>, put it in your own `backend/.env`, and set
+a spend limit on your account while developing. If a key does leak, only one
+person's account is affected and only one key needs rotating.
+
+If the team genuinely needs one shared key — for a recorded demonstration, say —
+the options are:
+
+- **Run the demo on one machine.** Simplest and safest. Whoever owns the key
+  runs it; nobody else needs a copy.
+- **A GitHub Actions secret.** Correct for automation, but understand the
+  limit: anyone with write access can add a workflow that prints or exfiltrates
+  the secret. It protects against outsiders, not against collaborators.
+- **A password manager with a shared vault.** Fine for people, never for a
+  repository.
+
+Whatever you choose, never paste a key into a commit message, a pull request
+description, a test fixture, a screenshot, a Slack or Discord message, or a
+submitted document. Anthropic keys are recognisable (`sk-ant-...`) and are
+scanned for automatically once they reach a public surface.
+
+**If a key is exposed, rotate it first.** Revoke it in the Anthropic console,
+then worry about the git history. Rewriting history does not help — the value
+is already in someone's clone, and a revoked key is worthless to whoever has
+it.
 
 ## Data
 

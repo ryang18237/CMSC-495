@@ -8,8 +8,10 @@
 
 const BASE_URL = import.meta.env?.VITE_API_BASE_URL ?? ''
 
-export class ApiError extends Error {
-  constructor(status, code, message, requestId) {
+export class ApiError extends Error
+{
+  constructor(status, code, message, requestId)
+  {
     super(message)
     this.name = 'ApiError'
     this.status = status
@@ -18,32 +20,40 @@ export class ApiError extends Error {
   }
 }
 
-export async function request(path, { method = 'GET', token, body } = {}) {
+export async function request(path, { method = 'GET', token, body } = {})
+{
   const headers = {}
   if (token) headers.Authorization = `Bearer ${token}`
   if (body !== undefined) headers['Content-Type'] = 'application/json'
 
   let response
-  try {
+  try
+  {
     response = await fetch(`${BASE_URL}${path}`, {
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
     })
-  } catch (cause) {
+  }
+  catch (cause)
+  {
     throw new ApiError(0, 'NETWORK_ERROR', 'Could not reach the service.', null, { cause })
   }
 
   if (response.status === 204) return null
 
   let payload = null
-  try {
+  try
+  {
     payload = await response.json()
-  } catch {
+  }
+  catch
+  {
     payload = null
   }
 
-  if (!response.ok) {
+  if (!response.ok)
+  {
     const error = payload?.error ?? {}
     throw new ApiError(
       response.status,
@@ -94,4 +104,18 @@ export const api = {
 
   updateCase: (token, caseId, status) =>
     request(`/api/v1/agent/cases/${caseId}`, { method: 'PATCH', token, body: { status } }),
+
+  // Reviewed AI configuration and operational counters (agent role only).
+  listRecommendations: (token) => request('/api/v1/agent/recommendations', { token }),
+
+  reviewRecommendation: (token, recommendationId, reviewStatus) =>
+    request(`/api/v1/agent/recommendations/${recommendationId}`, {
+      method: 'PATCH',
+      token,
+      body: { reviewStatus },
+    }),
+
+  runAnalytics: (token) => request('/api/v1/agent/analytics/run', { method: 'POST', token }),
+
+  metrics: (token) => request('/api/v1/ops/metrics', { token }),
 }

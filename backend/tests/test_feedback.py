@@ -13,7 +13,7 @@ def _answered_message(client: TestClient, auth: dict[str, str], conversation_id:
     response = client.post(
         f"/api/v1/conversations/{conversation_id}/messages",
         headers=auth,
-        json={"message": "Why was I charged twice for my order?"},
+        json={"message": "Which certification should I work toward next?"},
     )
     return str(response.json()["messageId"])
 

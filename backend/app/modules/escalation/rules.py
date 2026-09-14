@@ -15,9 +15,15 @@ _HUMAN_REQUEST = re.compile(
     re.IGNORECASE,
 )
 
+# Account security is handled by a different team from career counselling, and
+# these messages must never be answered by the model, so they are matched on the
+# way in rather than after a response has been generated.
 _SECURITY_SENSITIVE = re.compile(
-    r"\b(?:fraud|fraudulent|unauthori[sz]ed charge|identity theft|stolen card|"
-    r"account (?:was )?hacked|hacked my account|data breach|"
+    r"\b(?:fraud|fraudulent|identity theft|data breach|"
+    r"unauthori[sz]ed (?:access|login|use)|"
+    r"account (?:was |been )?(?:hacked|compromised|stolen)|"
+    r"(?:hacked|compromised) my account|"
+    r"someone (?:else )?(?:has |is |was )?(?:using|accessing|logged into) my account|"
     r"social security number|ssn)\b",
     re.IGNORECASE,
 )
@@ -35,27 +41,30 @@ def detect_pre_ai_reason(message: str) -> EscalationReason | None:
     return None
 
 
+# What the member sees when a conversation is handed over. Each one says what
+# happened and what comes next, because "escalated" on its own tells the person
+# nothing useful.
 ACKNOWLEDGEMENT: dict[EscalationReason, str] = {
     EscalationReason.CUSTOMER_REQUEST: (
-        "Of course -- I'm connecting you with a human support specialist now. "
-        "They can see this conversation, so you won't need to repeat yourself."
+        "Of course -- I'm connecting you with a career counsellor now. They can see "
+        "this conversation, so you won't need to start over."
     ),
     EscalationReason.SECURITY_CONCERN: (
-        "This looks like a security-sensitive issue, so I'm routing you straight to a "
-        "specialist who is authorised to handle it. Please don't share passwords, full "
-        "card numbers or identification numbers in this chat."
+        "This looks like an account security issue, so I'm routing you straight to "
+        "someone authorised to handle it. Please don't share passwords, financial "
+        "account numbers or identification numbers in this chat."
     ),
     EscalationReason.UNSUPPORTED_TOPIC: (
-        "That's outside what I can answer reliably, so I've passed it to a human "
-        "specialist along with the details you've given me."
+        "That's outside what I can answer reliably, so I've passed it to a career "
+        "counsellor along with what you've told me."
     ),
     EscalationReason.VALIDATION_FAILURE: (
-        "I wasn't able to produce an answer I'm confident is correct, so a human "
-        "specialist will take this from here."
+        "I wasn't able to produce an answer I'm confident is correct, so a career "
+        "counsellor will take this from here."
     ),
     EscalationReason.AI_SERVICE_FAILURE: (
-        "I'm sorry -- I can't reach our assistant service right now, so I don't want to "
-        "guess at an answer. I've made a human support specialist available to pick this "
-        "up for you."
+        "I'm sorry -- I can't reach the assistant service right now, and I'd rather "
+        "not guess at an answer about your education or career plans. I've made a "
+        "career counsellor available to pick this up for you."
     ),
 }

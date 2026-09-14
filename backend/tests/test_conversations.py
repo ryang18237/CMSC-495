@@ -21,7 +21,7 @@ def test_message_is_answered_end_to_end(
     response = client.post(
         f"/api/v1/conversations/{conversation_id}/messages",
         headers=customer_auth,
-        json={"message": "Why was I charged twice for my order?"},
+        json={"message": "Which certification should I work toward next?"},
     )
     assert response.status_code == 200
 
@@ -39,7 +39,7 @@ def test_history_records_both_turns_with_sources(
     client.post(
         f"/api/v1/conversations/{conversation_id}/messages",
         headers=customer_auth,
-        json={"message": "Why was I charged twice for my order?"},
+        json={"message": "Which certification should I work toward next?"},
     )
     response = client.get(f"/api/v1/conversations/{conversation_id}", headers=customer_auth)
     assert response.status_code == 200
@@ -53,7 +53,7 @@ def test_history_records_both_turns_with_sources(
 def test_multi_turn_conversation_keeps_context(
     client: TestClient, customer_auth: dict[str, str], conversation_id: str
 ) -> None:
-    for text in ("Where is my order?", "How long does delivery take?"):
+    for text in ("How do I describe this on a resume?", "What about an apprenticeship instead?"):
         response = client.post(
             f"/api/v1/conversations/{conversation_id}/messages",
             headers=customer_auth,
@@ -79,7 +79,7 @@ def test_another_customer_cannot_post_into_the_conversation(
     response = client.post(
         f"/api/v1/conversations/{conversation_id}/messages",
         headers=other_customer_auth,
-        json={"message": "Show me their order history."},
+        json={"message": "Show me their service record."},
     )
     assert response.status_code == 403
 
@@ -169,7 +169,7 @@ def test_closed_conversation_returns_409(
     response = client.post(
         f"/api/v1/conversations/{conversation_id}/messages",
         headers=customer_auth,
-        json={"message": "One more question about my order."},
+        json={"message": "One more question about my resume."},
     )
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "CONVERSATION_CLOSED"
@@ -187,7 +187,7 @@ def test_rate_limit_returns_429(
         response = client.post(
             f"/api/v1/conversations/{conversation_id}/messages",
             headers=customer_auth,
-            json={"message": "Where is my order?"},
+            json={"message": "How do I describe this on a resume?"},
         )
         statuses.append(response.status_code)
 

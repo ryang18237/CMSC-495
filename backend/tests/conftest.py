@@ -16,6 +16,8 @@ os.environ.setdefault("JWT_SECRET", "test-only-secret-value-that-is-long-enough-
 os.environ.setdefault("AI_PROVIDER", "mock")
 os.environ.setdefault("ENVIRONMENT", "test")
 os.environ.setdefault("SEED_PASSWORD", "DemoPassw0rd!")
+# The test session owns schema creation and seeding; startup must not repeat it.
+os.environ.setdefault("AUTO_BOOTSTRAP", "false")
 
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
@@ -24,6 +26,8 @@ from app import rate_limit  # noqa: E402
 from app.bootstrap import AGENT_ID, CUSTOMER_ID, CUSTOMER_TWO_ID, create_schema, seed  # noqa: E402
 from app.db import Base, SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
+from app.modules.cache.service import reset_cache  # noqa: E402
+from app.modules.monitoring.service import reset_metrics  # noqa: E402
 
 SEED_PASSWORD = "DemoPassw0rd!"
 
@@ -49,6 +53,8 @@ def _database() -> Iterator[None]:
 def _clean_transactional_tables() -> Iterator[None]:
     """Reset per-conversation state between tests; seeded reference data stays."""
     rate_limit.reset()
+    reset_cache()
+    reset_metrics()
     yield
     db = SessionLocal()
     try:
@@ -90,17 +96,17 @@ def _token(client: TestClient, email: str) -> str:
 
 @pytest.fixture
 def customer_auth(client: TestClient) -> dict[str, str]:
-    return {"Authorization": f"Bearer {_token(client, 'customer@example.com')}"}
+    return {"Authorization": f"Bearer {_token(client, 'member@example.com')}"}
 
 
 @pytest.fixture
 def other_customer_auth(client: TestClient) -> dict[str, str]:
-    return {"Authorization": f"Bearer {_token(client, 'customer2@example.com')}"}
+    return {"Authorization": f"Bearer {_token(client, 'member2@example.com')}"}
 
 
 @pytest.fixture
 def agent_auth(client: TestClient) -> dict[str, str]:
-    return {"Authorization": f"Bearer {_token(client, 'agent@example.com')}"}
+    return {"Authorization": f"Bearer {_token(client, 'counselor@example.com')}"}
 
 
 @pytest.fixture

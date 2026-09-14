@@ -9,7 +9,7 @@ def _escalated_case(client: TestClient, auth: dict[str, str], conversation_id: s
     client.post(
         f"/api/v1/conversations/{conversation_id}/messages",
         headers=auth,
-        json={"message": "Why was I charged twice for my order?"},
+        json={"message": "Which certification should I work toward next?"},
     )
     response = client.post(
         f"/api/v1/conversations/{conversation_id}/escalate",

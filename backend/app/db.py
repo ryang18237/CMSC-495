@@ -18,7 +18,13 @@ from app.config import get_settings
 
 
 class GUID(TypeDecorator):
-    """Platform-independent UUID type."""
+    """UUID column that works on PostgreSQL and on SQLite.
+
+    PostgreSQL has a native UUID type and SQLite does not, so this stores a
+    real UUID on PostgreSQL and a 36 character string elsewhere. Callers only
+    ever see `uuid.UUID` either way, which is what lets the same models run
+    against the production database and against a local file.
+    """
 
     impl = CHAR
     cache_ok = True
@@ -59,7 +65,11 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expi
 
 
 def get_db() -> Iterator[Session]:
-    """FastAPI dependency that yields a scoped database session."""
+    """Yield a session for one request and close it afterwards.
+
+    Committing is left to the route, because a route often coordinates several
+    services and either all of that work lands or none of it should.
+    """
     db = SessionLocal()
     try:
         yield db

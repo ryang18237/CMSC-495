@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.errors import NotFoundError
 from app.models import KnowledgeArticle
+from app.modules.cache.service import get_cache
 
 _STOP_WORDS = {
     "the",
@@ -82,6 +83,14 @@ class KnowledgeBaseService:
         if not terms:
             return []
 
+        # Approved support content changes rarely and is identical for every
+        # customer, so it is the safest thing in the system to cache.
+        cache = get_cache()
+        cache_key = f"kb:search:{limit}:{'|'.join(sorted(terms))}"
+        cached = cache.get(cache_key)
+        if cached is not None:
+            return list(cached)
+
         rows = list(self._db.scalars(select(KnowledgeArticle)))
         scored: list[tuple[int, KnowledgeArticle]] = []
         for row in rows:
@@ -91,7 +100,9 @@ class KnowledgeBaseService:
                 scored.append((score, row))
 
         scored.sort(key=lambda pair: (-pair[0], pair[1].title))
-        return [_to_article(row) for _, row in scored[:limit]]
+        results = [_to_article(row) for _, row in scored[:limit]]
+        cache.set(cache_key, results)
+        return results
 
     def get_article(self, article_id: uuid.UUID) -> Article:
         row = self._db.get(KnowledgeArticle, article_id)
