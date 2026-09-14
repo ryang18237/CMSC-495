@@ -19,11 +19,22 @@ _PROMPT_LEAK = re.compile(
     r"you are the customer service assistant|system instruction|knowledge base article --",
     re.IGNORECASE,
 )
-# The assistant may explain an action but must never claim to have performed one.
+# The assistant may explain a process but must never claim to have carried it
+# out, and must never announce a decision only a counsellor can make.
 _ACTION_CLAIM = re.compile(
     r"\bi (?:have |'ve |has )?(?:already )?"
-    r"(?:issued|processed|refunded|cancelled|canceled|reset|closed|deleted|updated) "
-    r"(?:your|the|a|an) ",
+    r"(?:enrolled|registered|submitted|applied|approved|denied|processed|"
+    r"scheduled|cancelled|canceled|reset|closed|updated) "
+    r"(?:you|your|the|a|an) ",
+    re.IGNORECASE,
+)
+
+# Outcomes nobody can promise. A guarantee is a validation failure even when the
+# rest of the response is reasonable.
+_GUARANTEE = re.compile(
+    r"\b(?:you (?:are|will be) (?:guaranteed|definitely|certainly) )"
+    r"|\b(?:guarantee(?:s|d)? (?:you|your) (?:a |an )?"
+    r"(?:job|placement|admission|acceptance|funding|approval))",
     re.IGNORECASE,
 )
 
@@ -64,7 +75,9 @@ class ResponseValidationService:
         if _PROMPT_LEAK.search(text):
             failures.append("response leaks internal instructions")
         if _ACTION_CLAIM.search(text):
-            failures.append("response claims an account action the assistant cannot perform")
+            failures.append("response claims an action the assistant cannot perform")
+        if _GUARANTEE.search(text):
+            failures.append("response guarantees an outcome that cannot be guaranteed")
 
         return ValidationResult(valid=not failures, failures=failures)
 

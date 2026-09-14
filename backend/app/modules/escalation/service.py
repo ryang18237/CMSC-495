@@ -14,8 +14,11 @@ from app.errors import ConflictError, NotFoundError
 from app.models import Conversation, ConversationMessage, EscalationCase
 from app.schemas import CaseStatus, EscalationReason
 
-DEFAULT_QUEUE = "CUSTOMER_SUPPORT"
-SECURITY_QUEUE = "TRUST_AND_SAFETY"
+# Two queues, because the people who staff them are different: counsellors
+# advise on education and careers, while account security goes to a team
+# authorised to act on it.
+DEFAULT_QUEUE = "CAREER_COUNSELING"
+SECURITY_QUEUE = "ACCOUNT_SECURITY"
 _ACTIVE_STATUSES = (CaseStatus.QUEUED.value, CaseStatus.ASSIGNED.value)
 
 
@@ -73,7 +76,12 @@ class EscalationService:
         return case
 
     def build_summary(self, conversation_id: uuid.UUID, reason: EscalationReason) -> str:
-        """Concise handover context so the customer does not restart the interaction."""
+        """Concise handover context so the member does not have to start over.
+
+        Only the member's own turns go into the summary. The assistant's replies
+        are already in the transcript the counsellor can read, and repeating
+        them here would bury the question that actually needs answering.
+        """
         customer_turns = list(
             self._db.scalars(
                 select(ConversationMessage)
