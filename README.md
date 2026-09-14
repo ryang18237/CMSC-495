@@ -13,13 +13,9 @@ asynchronous feedback analysis. Every record in this repository is synthetic;
 no real service member's information appears anywhere, and the knowledge base
 is illustrative sample content rather than guidance from any agency.
 
-| Role | Owner | Area |
-| --- | --- | --- |
 | Lead Architect | Ravonne Wade | Architecture, component boundaries, data flow |
 | Interface Designer | Ryan Gant | API contracts, component interfaces, validation, error handling |
-| Integration Lead | Benjamin Madden | AI chatbot integration, escalation path, feedback/learning loop |
-
----
+| Integration Lead | Benjamin Madden | AI chatbot integration, escalation path |
 
 ## Quick start
 
@@ -111,9 +107,7 @@ URL differs. `/api/v1/health` reports which engine is live under
 To use PostgreSQL, install it (see below) and `run.py` will pick it up. Use
 `--postgres` to make a missing server an error instead of a fallback.
 
----
-
-## Installing PostgreSQL (optional but recommended)
+## Local setup (macOS)
 
 <details>
 <summary><b>macOS</b></summary>
@@ -205,42 +199,7 @@ node --version      # 18 or newer
 <details>
 <summary><b>Windows 10 / 11</b></summary>
 
-Use **PowerShell**, not Command Prompt.
-
-```powershell
-winget install Python.Python.3.11
-winget install OpenJS.NodeJS.LTS
-winget install Git.Git
-```
-
-If you prefer installers, use python.org (**tick "Add python.exe to PATH"**),
-nodejs.org (LTS) and git-scm.com.
-
-**Close and reopen PowerShell** after installing, then verify:
-
-```powershell
-python --version    # 3.10 or newer
-node --version      # 18 or newer
-```
-
-Two Windows quirks worth knowing:
-
-- If PowerShell later refuses to run the virtual-environment activation
-  script, run this once (it affects only your user account):
-  `Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned`
-- If `python` opens the Microsoft Store instead of running, turn off the
-  Python app aliases: *Settings → Apps → Advanced app settings → App execution
-  aliases* → switch off both `python.exe` entries.
-
-The `.sh` files in `scripts/` are bash scripts — run them from **Git Bash**
-(right-click in the repo folder → *Git Bash Here*) or WSL. Nothing in the
-application requires them; `run.py` covers the same ground on both platforms.
-
-</details>
-
----
-
-## Running it by hand
+## Running the checks locally
 
 `run.py` only automates the steps below; both still work exactly as before.
 
@@ -305,119 +264,6 @@ The asynchronous worker is run on demand:
 cd backend && python -m app.modules.analytics.worker
 ```
 
----
-
-## Troubleshooting
-
-| Symptom | Fix |
-| --- | --- |
-| `python: command not found` (macOS) | Use `python3`, or run `./start.command`. |
-| `python` opens the Microsoft Store | Turn off the Python app execution aliases — see the Windows prerequisites. |
-| "No PostgreSQL server reachable" | Expected on a machine without PostgreSQL. The run continues on SQLite. Install PostgreSQL if you want the real data layer. |
-| `password authentication failed` | The password in `backend/.env` is wrong, or a special character needs percent-encoding. |
-| Port 8000 or 5173 already in use | Another copy is still running. macOS: `lsof -ti:8000 \| xargs kill`. Windows: `Get-NetTCPConnection -LocalPort 8000 \| Stop-Process -Id {$_.OwningProcess}`. |
-| Browser opens but sign-in fails | Check the terminal — the API may have failed to start. |
-| Only the API started | `npm` was not found. Install Node.js from <https://nodejs.org>. |
-| "Email address or password is incorrect" on a demo account | A database seeded by an older version. Restarting picks up the corrected accounts automatically; `python run.py --reset-db` also does it. |
-| Odd state after experimenting | `python run.py --reset-db` |
-| Dependencies look broken | Delete `backend/.venv` and `frontend/node_modules`, then run `python run.py` again. |
-
----
-
-## Feature status
-
-Measured against the UML component diagram.
-
-| Component | State | Notes |
-| --- | --- | --- |
-| Conversation Management | Implemented | Orchestrates every turn |
-| Customer Data Adapter | Implemented | Translates the simulated personnel record |
-| Support Knowledge Base | Implemented | Keyword retrieval over approved articles |
-| Response Validation | Implemented | Deterministic content rules |
-| Escalation | Implemented | Five approved reasons, case lifecycle, queues |
-| Feedback | Implemented | Records ratings, publishes to the event outbox |
-| Learning Analytics Worker | Implemented | Aggregates patterns into candidates |
-| Authentication and Authorization | Implemented | JWT, customer and agent roles |
-| Customer Web Application | Implemented | Chat, feedback, escalation |
-| Human Agent Dashboard | Implemented | Queue, case detail, case lifecycle |
-| Counsellor reply path | Not started | Counsellors read a case but cannot yet answer it — Integration Lead's branch |
-| Application PostgreSQL DB | Implemented | Plus a SQLite fallback for local runs |
-| AI Integration | **Barebones** | Interface + working mock provider; managed provider is a stub |
-| Cache | **Barebones** | Real interface and call sites; process-local storage, not shared |
-| Monitoring and Logging | **Barebones** | Real counters on the live path; no export, alerting or tracing |
-| Reviewed AI Configuration | **Barebones** | Human approve/reject works; an approval is not applied automatically |
-| Load Balancer / Entry Point | **Barebones** | Middleware chain and `instanceId`; multi-instance is a deployment exercise |
-| Message / Event Queue | **Barebones** | Database outbox table; worker runs on demand, not on a schedule |
-| Managed AI Model Provider | Stub | See `docs/AI_INTEGRATION_HANDOFF.md` |
-
-Each barebones component names what it does *not* do in its own module
-docstring, and `docs/ARCHITECTURE.md` explains why each boundary sits where it
-does.
-
-## What works in the Alpha
-
-- **Multi-module integration** — one customer message travels through
-  Conversation Management → Customer Data Adapter → Knowledge Base → AI
-  Integration → Response Validation → (Escalation) → persistence, and the
-  result is visible in both the customer client and the agent dashboard.
-- **Functional AI component** — the AI Integration Module runs behind a
-  provider interface with a working `MockAIProvider`. Switching to a managed
-  model provider is a configuration change, not a code change.
-- **CI/CD pipeline** — GitHub Actions runs lint, format, type checks, tests
-  against a real PostgreSQL service, a frontend build, and an end-to-end
-  integration smoke test on every push and pull request.
-- **Core MVP features** — all seven specified endpoints, JWT authentication
-  with customer and agent roles, the five approved escalation reasons, the
-  documented error contract, feedback capture, and the Learning Analytics
-  Worker.
-
----
-
-## Contributing
-
-```bash
-git checkout main
-git pull
-git checkout -b feature/<short-description>
-# ... work ...
-python run.py --check
-git add <specific files>
-git commit -m "feat(module): what changed and why"
-git push -u origin feature/<short-description>
-```
-
-Open a pull request into `main` and let CI finish before merging. Do not commit
-directly to `main`. If a request or response contract changes, update
-`docs/API.md` in the same pull request.
-
-### Code style
-
-Both are enforced by CI, so run `python run.py --check` before pushing.
-
-- **Python** — `ruff format` (Black-compatible), 100-column lines, checked by
-  `ruff format --check`. Type annotations on public functions; `mypy app` must
-  pass.
-- **JavaScript** — Allman braces: an opening brace starts its own line, and
-  `else` / `catch` start theirs rather than sharing a line with a closing
-  brace. Enforced by ESLint's `brace-style` and `indent` rules, and
-  auto-fixable with `npx eslint . --fix` from `frontend/`.
-
-```js
-function example(value)
-{
-  if (value)
-  {
-    return 'yes'
-  }
-  else
-  {
-    return 'no'
-  }
-}
-```
-
----
-
 ## Repository layout
 
 ```
@@ -457,8 +303,6 @@ docs/
   SECURITY.md                  Secret handling and access rules
 scripts/smoke_test.sh    End-to-end integration check used by CI
 ```
-
----
 
 ## Alpha limitations (deliberate)
 
