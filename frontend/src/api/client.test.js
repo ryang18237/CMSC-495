@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ApiError, api, request } from './client.js'
 
-function mockFetch(status, payload) {
+function mockFetch(status, payload)
+{
   return vi.fn().mockResolvedValue({
     ok: status >= 200 && status < 300,
     status,
@@ -9,17 +10,21 @@ function mockFetch(status, payload) {
   })
 }
 
-afterEach(() => {
+afterEach(() =>
+{
   vi.unstubAllGlobals()
 })
 
-describe('api client', () => {
-  it('returns the parsed body on success', async () => {
+describe('api client', () =>
+{
+  it('returns the parsed body on success', async () =>
+  {
     vi.stubGlobal('fetch', mockFetch(200, { status: 'healthy' }))
     await expect(api.health()).resolves.toEqual({ status: 'healthy' })
   })
 
-  it('attaches the bearer token', async () => {
+  it('attaches the bearer token', async () =>
+  {
     const fetchMock = mockFetch(201, { conversationId: 'abc' })
     vi.stubGlobal('fetch', fetchMock)
 
@@ -30,7 +35,8 @@ describe('api client', () => {
     expect(options.method).toBe('POST')
   })
 
-  it('translates the documented error contract into an ApiError', async () => {
+  it('translates the documented error contract into an ApiError', async () =>
+  {
     vi.stubGlobal(
       'fetch',
       mockFetch(422, {
@@ -49,7 +55,8 @@ describe('api client', () => {
     })
   })
 
-  it('reports a network failure without leaking internals', async () => {
+  it('reports a network failure without leaking internals', async () =>
+  {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('socket hang up')))
 
     const error = await request('/api/v1/health').catch((caught) => caught)

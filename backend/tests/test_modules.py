@@ -33,40 +33,53 @@ from app.schemas import EscalationReason
 # Customer Data Adapter
 # ---------------------------------------------------------------------------
 def test_adapter_translates_legacy_codes(db_session: Session) -> None:
+    """Codes in, readable values out. The raw codes must not escape the adapter."""
     context = CustomerDataAdapter(db_session).get_customer_context(CUSTOMER_ID)
-    assert context.customer_ref == "CUST-100241"
-    assert context.account_status == "ACTIVE"
-    assert context.plan_name == "Premium"
+
+    assert context.customer_ref == "MBR-100241"
+    assert context.service_branch == "Army"
+    assert context.pay_grade == "E-5"
+    assert context.occupational_specialty == "Information Technology Specialist"
+    # The legacy column is one semicolon delimited string; callers get a list.
+    assert "Network Administration Course" in context.completed_training
+    assert context.credentials == ["CompTIA A+"]
 
 
 def test_adapter_minimises_fields_by_inquiry_type(db_session: Session) -> None:
+    """A question about timing must not carry the member's training record."""
     adapter = CustomerDataAdapter(db_session)
 
-    general = adapter.get_relevant_account_data(CUSTOMER_ID, "GENERAL")
-    billing = adapter.get_relevant_account_data(CUSTOMER_ID, "BILLING")
+    transition = adapter.get_relevant_account_data(CUSTOMER_ID, "TRANSITION")
+    credential = adapter.get_relevant_account_data(CUSTOMER_ID, "CREDENTIAL")
 
-    assert general.available_fields == ["account_status"]
-    assert "last_order" in billing.available_fields
-    # Data the inquiry does not need is never rendered into a prompt.
-    assert not any("order" in fact.lower() for fact in general.to_prompt_facts())
-    assert any("order" in fact.lower() for fact in billing.to_prompt_facts())
+    assert "completed_training" not in transition.available_fields
+    assert "completed_training" in credential.available_fields
+
+    # What matters is not the permission list but what actually reaches a prompt.
+    assert not any("Completed training" in fact for fact in transition.to_prompt_facts())
+    assert any("Completed training" in fact for fact in credential.to_prompt_facts())
 
 
-def test_unknown_customer_yields_a_safe_context(db_session: Session) -> None:
+def test_unknown_member_yields_a_safe_context(db_session: Session) -> None:
+    """No personnel record is not an error -- the assistant answers generally."""
     context = CustomerDataAdapter(db_session).get_customer_context(uuid.uuid4())
-    assert context.account_status == "UNKNOWN"
+    assert context.service_branch == "UNKNOWN"
+    assert context.completed_training == []
 
 
 @pytest.mark.parametrize(
     ("message", "expected"),
     [
-        ("Why was I charged twice?", "BILLING"),
-        ("Where is my delivery?", "ORDER"),
-        ("I want to cancel my subscription", "ACCOUNT"),
+        ("Which certification should I work toward next?", "CREDENTIAL"),
+        ("Is an associate degree worth it?", "EDUCATION"),
+        ("When should I start a SkillBridge internship?", "TRANSITION"),
+        ("How do I describe this on a resume?", "CAREER"),
         ("Hello there", "GENERAL"),
     ],
 )
 def test_inquiry_classification(message: str, expected: str) -> None:
+    """Classification decides how much of the record may be shared, so it is
+    checked directly rather than only through the conversation path."""
     assert classify_inquiry(message) == expected
 
 
@@ -74,9 +87,11 @@ def test_inquiry_classification(message: str, expected: str) -> None:
 # Knowledge Base
 # ---------------------------------------------------------------------------
 def test_knowledge_search_ranks_relevant_articles(db_session: Session) -> None:
-    articles = KnowledgeBaseService(db_session).search_articles("duplicate charge refund", limit=2)
+    articles = KnowledgeBaseService(db_session).search_articles(
+        "certification credential exam", limit=2
+    )
     assert articles
-    assert "charge" in articles[0].title.lower()
+    assert "certification" in articles[0].title.lower()
 
 
 def test_knowledge_search_ignores_stop_words(db_session: Session) -> None:
@@ -92,8 +107,8 @@ def test_knowledge_search_ignores_stop_words(db_session: Session) -> None:
         ("Can I talk to a real person?", EscalationReason.CUSTOMER_REQUEST),
         ("transfer me to an agent", EscalationReason.CUSTOMER_REQUEST),
         ("My account was hacked", EscalationReason.SECURITY_CONCERN),
-        ("I see an unauthorized charge", EscalationReason.SECURITY_CONCERN),
-        ("Where is my order?", None),
+        ("Someone else is using my account", EscalationReason.SECURITY_CONCERN),
+        ("How do I describe this on a resume?", None),
     ],
 )
 def test_pre_ai_rules(message: str, expected: EscalationReason | None) -> None:
@@ -106,16 +121,19 @@ def test_pre_ai_rules(message: str, expected: EscalationReason | None) -> None:
 def test_prompt_contains_only_permitted_context() -> None:
     context = ChatContext(
         conversation_id=str(uuid.uuid4()),
-        inquiry_type="BILLING",
-        customer_message="Why was I charged twice?",
-        customer_facts=["Account status: ACTIVE"],
-        knowledge_snippets=[("Duplicate charges", "Pending authorisations clear in 3-5 days.")],
+        inquiry_type="CREDENTIAL",
+        customer_message="Which certification should I work toward next?",
+        customer_facts=["Completed training: Network Administration Course"],
+        knowledge_snippets=[("Certification pathways", "Completed training often covers it.")],
     )
     prompt = AIIntegrationService(MockAIProvider()).build_prompt(context)
 
-    assert "Account status: ACTIVE" in prompt.system
-    assert "Duplicate charges" in prompt.system
-    assert prompt.messages[-1] == {"role": "user", "content": "Why was I charged twice?"}
+    assert "Completed training: Network Administration Course" in prompt.system
+    assert "Certification pathways" in prompt.system
+    assert prompt.messages[-1] == {
+        "role": "user",
+        "content": "Which certification should I work toward next?",
+    }
     assert prompt.token_estimate() > 0
 
 
@@ -123,8 +141,8 @@ def test_prompt_truncates_long_articles() -> None:
     context = ChatContext(
         conversation_id=str(uuid.uuid4()),
         inquiry_type="GENERAL",
-        customer_message="Tell me about returns",
-        knowledge_snippets=[("Returns", "word " * 500)],
+        customer_message="Tell me about apprenticeships",
+        knowledge_snippets=[("Apprenticeships", "word " * 500)],
     )
     prompt = AIIntegrationService(MockAIProvider()).build_prompt(context)
     assert "..." in prompt.system
@@ -165,18 +183,24 @@ class _NonRetryableProvider(AIProvider):
 
 
 class _PolicyBreakingProvider(AIProvider):
+    """Returns something plausible that the assistant is not allowed to say.
+
+    Claiming to have enrolled the member is an action only a counsellor takes,
+    and the identifier is the kind of value that must never be echoed back.
+    """
+
     name = "policy-breaking"
 
     def generate(self, prompt: Prompt) -> ProviderResponse:
         return ProviderResponse(
-            text="I have issued your refund of $129.98 to card 4111 1111 1111 1111.",
+            text=("I have enrolled you in the programme and confirmed it against 123-45-6789."),
             model="test",
         )
 
 
-def _context(message: str = "Where is my order?") -> ChatContext:
+def _context(message: str = "How do I describe this on a resume?") -> ChatContext:
     return ChatContext(
-        conversation_id=str(uuid.uuid4()), inquiry_type="ORDER", customer_message=message
+        conversation_id=str(uuid.uuid4()), inquiry_type="CAREER", customer_message=message
     )
 
 
@@ -221,7 +245,7 @@ def test_anthropic_provider_reports_unavailable_without_a_key() -> None:
 # ---------------------------------------------------------------------------
 # Response validation
 # ---------------------------------------------------------------------------
-def test_validation_rejects_an_action_claim_and_leaked_card_number() -> None:
+def test_validation_rejects_an_action_claim_and_leaked_identifier() -> None:
     service = AIIntegrationService(_PolicyBreakingProvider())
     result = service.generate_response(_context())
 
@@ -236,10 +260,20 @@ def test_validation_rejects_an_action_claim_and_leaked_card_number() -> None:
 def test_validation_accepts_a_normal_answer() -> None:
     result = AIResult(
         outcome=AIOutcome.ANSWERED,
-        text="Tracking updates within one business day of dispatch.",
+        text="A foundational certification builds on the coursework you finished.",
         model="test",
     )
     assert ResponseValidationService().validate_response(result).valid
+
+
+def test_validation_rejects_a_guaranteed_outcome() -> None:
+    """Nobody can promise a job or a place on a programme, including the model."""
+    result = AIResult(
+        outcome=AIOutcome.ANSWERED,
+        text="Finish this course and we guarantee you a job with a partner employer.",
+        model="test",
+    )
+    assert not ResponseValidationService().validate_response(result).valid
 
 
 def test_validation_rejects_an_over_long_response() -> None:
@@ -252,7 +286,9 @@ def test_validation_failure_escalates_through_the_service(db_session: Session) -
         db_session, ai_service=AIIntegrationService(_PolicyBreakingProvider())
     )
     conversation = service.create_conversation(CUSTOMER_ID)
-    response = service.process_message(conversation.id, CUSTOMER_ID, "Where is my order?")
+    response = service.process_message(
+        conversation.id, CUSTOMER_ID, "How do I describe this on a resume?"
+    )
     db_session.commit()
 
     assert response.status.value == "ESCALATED"
@@ -301,7 +337,7 @@ def test_answer_completes_within_the_response_target(
     response = client.post(
         f"/api/v1/conversations/{conversation_id}/messages",
         headers=customer_auth,
-        json={"message": "Why was I charged twice for my order?"},
+        json={"message": "Which certification should I work toward next?"},
     )
     elapsed = time.monotonic() - started
 

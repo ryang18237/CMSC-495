@@ -28,9 +28,7 @@ def test_asking_for_a_person_escalates_without_calling_the_model(
 def test_security_sensitive_message_escalates(
     client: TestClient, customer_auth: dict[str, str], conversation_id: str
 ) -> None:
-    body = _send(
-        client, customer_auth, conversation_id, "There is a fraudulent charge on my account"
-    )
+    body = _send(client, customer_auth, conversation_id, "I think my account was hacked")
     assert body["status"] == "ESCALATED"
     assert body["escalationReason"] == "SECURITY_CONCERN"
 
@@ -72,7 +70,7 @@ def test_explicit_escalation_creates_a_queued_case(
 
     body = response.json()
     assert body["status"] == "QUEUED"
-    assert body["queue"] == "CUSTOMER_SUPPORT"
+    assert body["queue"] == "CAREER_COUNSELING"
     uuid.UUID(body["caseId"])
 
 
@@ -84,7 +82,7 @@ def test_security_escalation_routes_to_its_own_queue(
         headers=customer_auth,
         json={"reason": "SECURITY_CONCERN"},
     )
-    assert response.json()["queue"] == "TRUST_AND_SAFETY"
+    assert response.json()["queue"] == "ACCOUNT_SECURITY"
 
 
 def test_duplicate_escalation_returns_409(
