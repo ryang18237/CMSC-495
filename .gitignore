@@ -36,11 +36,5 @@ secrets.json
 .vscode/
 *.swp
 
-# Work handed to another team member to commit under their own name. These stay
-# out of the repository so the commit lands under its author, not whoever
-# happened to be holding the files.
-handoff-benjamin/
-handoff-ravonne/
-
 # Draft PR text, pasted into GitHub rather than committed
 PULL_REQUEST.md
