@@ -14,7 +14,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse, Response
 
-from app.api.v1 import agent, auth, conversations, health, ops
+from app.api.v1 import agent, agent_handoff, auth, conversations, health, ops
 from app.config import get_settings
 from app.errors import error_body, register_exception_handlers
 from app.modules.monitoring.service import get_metrics
@@ -114,6 +114,7 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(conversations.router)
     app.include_router(agent.router)
+    app.include_router(agent_handoff.router)
     app.include_router(ops.router)
 
     return app

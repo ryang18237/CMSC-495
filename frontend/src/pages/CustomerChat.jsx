@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../api/client.js'
+import useCounsellorReplies from '../hooks/useCounsellorReplies.js'
 
 // One example per behaviour the Alpha demonstrates. Clicking one fills the
 // composer so a reviewer can see each path without knowing the trigger phrases.
@@ -33,6 +34,27 @@ export default function CustomerChat({ session })
   const [busy, setBusy] = useState(false)
   const [feedbackGiven, setFeedbackGiven] = useState({})
   const transcriptRef = useRef(null)
+  // Once a conversation has been handed over, a counsellor may answer at any
+  // time, so the chat watches for their replies instead of sitting still.
+  const isEscalated = messages.some((message) => message.status === 'ESCALATED')
+
+  const appendCounsellorReplies = useCallback((replies) =>
+  {
+    setMessages((current) =>
+    {
+      const known = new Set(current.map((message) => message.key))
+      const additions = replies
+        .filter((reply) => !known.has(reply.messageId))
+        .map((reply) => ({
+          sender: 'AGENT',
+          content: reply.content,
+          key: reply.messageId,
+        }))
+      return additions.length > 0 ? [...current, ...additions] : current
+    })
+  }, [])
+
+  useCounsellorReplies(session, conversationId, isEscalated, appendCounsellorReplies)
 
   const startConversation = useCallback(async () =>
   {

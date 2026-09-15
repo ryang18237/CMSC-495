@@ -309,3 +309,34 @@ button.link {
 .reveal-form { display: block; margin: 12px auto 0; }
 .login form button[type='submit'] { width: 100%; margin-top: 16px; }
 
+/* Counsellor reply box (human agent escalation path) */
+.reply-box { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 14px; }
+
+.reply-box textarea {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+  resize: vertical;
+  background: var(--surface);
+  color: inherit;
+}
+
+.reply-box textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.reply-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.bubble.agent {
+  background: #eef7ef;
+  border-color: #cfe6d3;
+}
