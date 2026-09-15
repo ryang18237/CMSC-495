@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api/client.js'
+import CounsellorReplyBox from './CounsellorReplyBox.jsx'
 
 const NEXT_STATUS = {
   QUEUED: 'ASSIGNED',
@@ -128,6 +129,20 @@ export default function EscalationQueue({ session, onError })
                 </article>
               ))}
             </div>
+
+
+            <CounsellorReplyBox
+              session={session}
+              caseId={selected.caseId}
+              caseStatus={selected.status}
+              onReplied={async () =>
+              {
+                await refresh()
+                await open(selected.caseId)
+              }}
+            />
+
+
           </>
         )}
       </div>
