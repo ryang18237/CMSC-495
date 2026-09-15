@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+.vite/
+coverage/
+# Vite writes these while resolving its config and normally removes them
+vite.config.js.timestamp-*
+vite.config.ts.timestamp-*
+
+# Environment & secrets -- NEVER commit real credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets.json
+
+# Local databases and the locally generated development signing secret
+*.sqlite3
+*.db
+.jwt_secret
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Draft PR text, pasted into GitHub rather than committed
+PULL_REQUEST.md
