@@ -1,6 +1,21 @@
 # API Reference — v1
 
-SkillBridge AI, Alpha release.
+SkillBridge AI, version 1.0.0.
+
+This document is the written contract. Two generated companions describe the
+same API and are kept in step with it:
+
+- **Interactive docs** — with the API running, open
+  <http://127.0.0.1:8000/docs> to read every route and call it from the
+  browser. Sign in with `POST /api/v1/auth/login`, copy the `accessToken`, and
+  paste it into **Authorize**.
+- **`docs/openapi.json`** — the OpenAPI 3.1 description, committed so contract
+  changes show up in pull request diffs. Regenerate it with
+  `python scripts/export_openapi.py`; CI fails if it is stale.
+
+A test (`backend/tests/test_api_contract.py`) fails if a route exists that the
+table below does not list, if the table lists a route that does not exist, or
+if the code raises an error code this document never mentions.
 
 Base URL (local): `http://127.0.0.1:8000`
 
@@ -39,6 +54,7 @@ Send the token on every other call: `Authorization: Bearer <accessToken>`.
 
 | Method | Endpoint | Purpose | Success |
 | --- | --- | --- | --- |
+| POST | `/api/v1/auth/login` | Sign in and receive a bearer token | 200 |
 | POST | `/api/v1/conversations` | Create a conversation | 201 |
 | POST | `/api/v1/conversations/{conversationId}/messages` | Submit a customer message | 200 |
 | GET | `/api/v1/conversations/{conversationId}` | Retrieve authorized history | 200 |
@@ -50,12 +66,17 @@ Send the token on every other call: `Authorization: Bearer <accessToken>`.
 | GET | `/api/v1/agent/recommendations` | List AI improvement candidates (agent only) | 200 |
 | PATCH | `/api/v1/agent/recommendations/{recommendationId}` | Approve or reject a candidate (agent only) | 200 |
 | POST | `/api/v1/agent/analytics/run` | Run the Learning Analytics Worker on demand (agent only) | 200 |
+| POST | `/api/v1/agent/cases/{caseId}/reply` | Reply to the member in their conversation (agent only) | 201 |
+| POST | `/api/v1/agent/cases/{caseId}/claim` | Take a case without replying yet (agent only) | 200 |
+| GET | `/api/v1/agent/cases/{caseId}/replies` | Counsellor replies on a case (agent only) | 200 |
+| GET | `/api/v1/agent/workload` | Open cases held by the signed-in counsellor (agent only) | 200 |
 | GET | `/api/v1/ops/metrics` | Operational counters (agent only) | 200 |
 | GET | `/api/v1/health` | Application health | 200 |
 
-`GET /api/v1/agent/cases` and `PATCH /api/v1/agent/cases/{caseId}` are Alpha
-additions supporting the agent dashboard; the seven endpoints from the System
-Design Specification are unchanged.
+The seven endpoints from the System Design Specification are unchanged in shape
+since the Alpha. Everything else in the table was added to support the
+counsellor dashboard, human replies and operations, and none of it altered an
+existing request or response.
 
 ---
 
@@ -232,6 +253,73 @@ conversation. Updating an already-closed case returns **409**.
 
 ---
 
+## Counsellor replies
+
+Owned by the Escalation Module. All four require the `AGENT` role.
+
+A reply is written into the member's own conversation, so the member reads it
+through `GET /api/v1/conversations/{conversationId}` like any other message —
+there is no second inbox. The client polls that endpoint every five seconds
+while a conversation is `ESCALATED`, and stops when it is not.
+
+### POST /api/v1/agent/cases/{caseId}/reply → 201
+
+```json
+{ "message": "Happy to help. Based on your network coursework, let's look at two options." }
+```
+
+Returns the stored message, the same `MessageView` shape a conversation
+returns. A counsellor reply has `sender: "AGENT"` and **no `status`** —
+`ANSWERED` and `ESCALATED` describe what the assistant did with a turn, and
+reusing them would inflate the operations counters.
+
+```json
+{
+  "messageId": "0c4b8f7e-3a2d-4d6e-9f1a-5b7c2e8d9a10",
+  "sender": "AGENT",
+  "content": "Happy to help. Based on your network coursework, let's look at two options.",
+  "status": null,
+  "escalationReason": null,
+  "sources": [],
+  "timestamp": "2026-09-28T14:05:11Z"
+}
+```
+
+Replying also claims the case if nobody holds it yet.
+
+| HTTP | Code | When |
+| --- | --- | --- |
+| 403 | `FORBIDDEN` | The case is assigned to another counsellor |
+| 404 | `CASE_NOT_FOUND` | No case with that id |
+| 409 | `CASE_NOT_OPEN` | The case is resolved or closed |
+| 422 | `INVALID_REPLY` | Empty, whitespace only, or longer than 4,000 characters |
+
+### POST /api/v1/agent/cases/{caseId}/claim → 200
+
+No body. Returns the case summary with `status: "ASSIGNED"`. Claiming a case
+you already hold is a no-op, so a double click is harmless.
+
+| HTTP | Code | When |
+| --- | --- | --- |
+| 404 | `CASE_NOT_FOUND` | No case with that id |
+| 409 | `CASE_ALREADY_ASSIGNED` | Another counsellor holds it |
+| 409 | `CASE_NOT_OPEN` | The case is resolved or closed |
+
+### GET /api/v1/agent/cases/{caseId}/replies → 200
+
+An array of `MessageView`, counsellor replies only, oldest first.
+
+### GET /api/v1/agent/workload → 200
+
+```json
+{ "openCases": 2 }
+```
+
+Queued or assigned cases held by the signed-in counsellor. It is a count, not a
+cap.
+
+---
+
 ## Reviewed AI configuration
 
 The Learning Analytics Worker aggregates feedback and escalation patterns into
@@ -353,14 +441,16 @@ Every failure uses the same shape:
 
 | HTTP | Condition | Example codes |
 | --- | --- | --- |
-| 400 | Malformed request or invalid syntax | `INVALID_IDENTIFIER` |
+| 400 | Malformed request or invalid syntax | `INVALID_IDENTIFIER`, `BAD_REQUEST` |
 | 401 | Authentication missing, expired or invalid | `UNAUTHORIZED` |
 | 403 | Authenticated user lacks permission | `FORBIDDEN` |
-| 404 | Resource not found | `CONVERSATION_NOT_FOUND`, `CASE_NOT_FOUND`, `MESSAGE_NOT_FOUND` |
-| 409 | Conflicting conversation or escalation state | `ESCALATION_ALREADY_ACTIVE`, `CONVERSATION_CLOSED` |
+| 404 | Resource not found | `NOT_FOUND` (unknown route), `CONVERSATION_NOT_FOUND`, `CASE_NOT_FOUND`, `MESSAGE_NOT_FOUND`, `RECOMMENDATION_NOT_FOUND`, `ARTICLE_NOT_FOUND` |
+| 405 | Method not allowed on this route | `METHOD_NOT_ALLOWED` |
+| 409 | Conflicting conversation, case or review state | `CONFLICT`, `ESCALATION_ALREADY_ACTIVE`, `CONVERSATION_CLOSED`, `CASE_ALREADY_CLOSED`, `CASE_NOT_OPEN`, `CASE_ALREADY_ASSIGNED`, `FEEDBACK_ALREADY_RECORDED`, `RECOMMENDATION_ALREADY_REVIEWED` |
 | 413 | Payload exceeds the permitted size | `PAYLOAD_TOO_LARGE` |
-| 422 | Valid syntax, failed business validation | `INVALID_MESSAGE`, `INVALID_COMMENT` |
+| 422 | Valid syntax, failed validation | `INVALID_REQUEST` (schema), `UNPROCESSABLE_REQUEST`, `INVALID_MESSAGE`, `INVALID_REPLY`, `INVALID_COMMENT`, `INVALID_REVIEW_DECISION` |
 | 429 | Rate limit exceeded | `RATE_LIMIT_EXCEEDED` |
+| 500 | Unexpected server fault; details are logged, never returned | `INTERNAL_ERROR` |
 | 502 | Upstream returned an invalid response | `UPSTREAM_INVALID_RESPONSE` |
 | 503 | Required dependency unavailable | `DEPENDENCY_UNAVAILABLE` |
 | 504 | Upstream exceeded the configured timeout | `UPSTREAM_TIMEOUT` |
