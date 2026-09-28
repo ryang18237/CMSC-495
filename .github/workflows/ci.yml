@@ -75,6 +75,10 @@ jobs:
       - name: Type check (mypy)
         run: mypy app
 
+      - name: API contract is current (docs/openapi.json)
+        working-directory: .
+        run: python scripts/export_openapi.py --check
+
       - name: Apply schema and seed synthetic data
         run: python -m app.bootstrap
 
@@ -190,3 +194,4 @@ jobs:
         if: failure()
         working-directory: backend
         run: cat server.log
+

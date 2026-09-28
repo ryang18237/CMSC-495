@@ -401,6 +401,13 @@ def run_checks(python: Path, env: dict[str, str], args_holder: argparse.Namespac
         if subprocess.run(command, cwd=BACKEND, env=env).returncode != 0:
             failures.append(f"backend {label}")
 
+    # The committed OpenAPI file has to match the code, or a reviewer reading
+    # the pull request diff is reading a contract the server no longer serves.
+    step("contract: docs/openapi.json is current")
+    export = [str(python), str(ROOT / "scripts" / "export_openapi.py"), "--check"]
+    if subprocess.run(export, cwd=ROOT, env=env).returncode != 0:
+        failures.append("openapi contract")
+
     npm = npm_command()
     if npm is None:
         warn("npm not found, skipping the web client checks.")
