@@ -58,6 +58,23 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
 
 
+# Groups shown in the interactive documentation at /docs, in this order.
+OPENAPI_TAGS = [
+    {"name": "health", "description": "Liveness and dependency status. No sign-in required."},
+    {"name": "auth", "description": "Sign in and receive a bearer token."},
+    {
+        "name": "conversations",
+        "description": "A member's conversation with the assistant: send, read, escalate, rate.",
+    },
+    {
+        "name": "agent",
+        "description": "Counsellor dashboard: the escalation queue, replies and review. "
+        "Every route requires the AGENT role.",
+    },
+    {"name": "ops", "description": "Operational metrics for this instance. AGENT role only."},
+]
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(
@@ -65,11 +82,13 @@ def create_app() -> FastAPI:
         version=settings.app_version,
         lifespan=lifespan,
         description=(
-            "Alpha release. A free education and professional development service for "
-            "military members and veterans. Modular monolith with an isolated AI "
-            "Integration Module, deterministic escalation rules and asynchronous "
-            "feedback analysis."
+            "A free education and professional development service for military "
+            "members and veterans. Modular monolith with an isolated AI Integration "
+            "Module, deterministic escalation rules and asynchronous feedback analysis. "
+            'Every error uses one envelope: `{"error": {"code", "message", '
+            '"requestId"}}`. The written contract is docs/API.md.'
         ),
+        openapi_tags=OPENAPI_TAGS,
     )
 
     app.add_middleware(

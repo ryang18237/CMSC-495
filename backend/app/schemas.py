@@ -179,6 +179,37 @@ class CaseStatusUpdateRequest(ApiModel):
 
 
 # --------------------------------------------------------------------------
+# Counsellor replies -- /api/v1/agent/cases/{caseId}/reply, /claim, /replies
+# and /api/v1/agent/workload
+# --------------------------------------------------------------------------
+
+# Longest reply a counsellor can send. Lives here rather than in the Escalation
+# Module because it is part of the contract: the client reads it to validate
+# before a round trip, and the request model below enforces it at the edge.
+MAX_REPLY_LENGTH = 4000
+
+
+class AgentReplyRequest(ApiModel):
+    """A counsellor's reply to a member.
+
+    Length is validated in the Escalation Module, the same way a member's
+    message is, so that every bad reply -- empty, whitespace only or too long --
+    returns the one documented code, 422 INVALID_REPLY. Bounding it here as
+    well would split that into INVALID_REQUEST for some cases and INVALID_REPLY
+    for others. An enormous body is still stopped at the edge by the 413
+    request-size check in main.py.
+    """
+
+    message: str
+
+
+class AgentWorkloadResponse(ApiModel):
+    """Open cases held by the signed-in counsellor."""
+
+    open_cases: int
+
+
+# --------------------------------------------------------------------------
 # POST /api/v1/conversations/{conversationId}/feedback
 # --------------------------------------------------------------------------
 class FeedbackRequest(ApiModel):

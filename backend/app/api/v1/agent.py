@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import parse_uuid
-from app.api.v1.conversations import _to_message_view
+from app.api.v1.views import to_case_summary, to_message_view
 from app.db import get_db
 from app.errors import ConflictError, NotFoundError
 from app.models import Conversation, ImprovementRecommendation, User
@@ -35,18 +35,7 @@ def list_cases(
     agent: User = Depends(require_agent),
 ) -> list[AgentCaseSummary]:
     cases = EscalationService(db).list_open_cases()
-    return [
-        AgentCaseSummary(
-            case_id=case.id,
-            conversation_id=case.conversation_id,
-            reason=EscalationReason(case.reason),
-            status=CaseStatus(case.status),
-            queue=case.queue,
-            summary=case.summary,
-            created_at=case.created_at,
-        )
-        for case in cases
-    ]
+    return [to_case_summary(case) for case in cases]
 
 
 @router.get("/cases/{case_id}", response_model=AgentCaseResponse)
@@ -68,7 +57,7 @@ def get_case(
         queue=case.queue,
         summary=case.summary,
         created_at=case.created_at,
-        messages=[_to_message_view(message) for message in messages],
+        messages=[to_message_view(message) for message in messages],
     )
 
 
@@ -83,15 +72,7 @@ def update_case(
     case = EscalationService(db).update_case_status(case_uuid, payload.status, agent.id)
     db.commit()
 
-    return AgentCaseSummary(
-        case_id=case.id,
-        conversation_id=case.conversation_id,
-        reason=EscalationReason(case.reason),
-        status=CaseStatus(case.status),
-        queue=case.queue,
-        summary=case.summary,
-        created_at=case.created_at,
-    )
+    return to_case_summary(case)
 
 
 # ---------------------------------------------------------------------------

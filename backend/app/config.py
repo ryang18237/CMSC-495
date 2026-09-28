@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     app_name: str = "SkillBridge AI"
-    app_version: str = "0.1.0-alpha"
+    app_version: str = "1.0.0"
     environment: str = "development"
 
     # Data layer. PostgreSQL is the supported data layer and what CI runs
