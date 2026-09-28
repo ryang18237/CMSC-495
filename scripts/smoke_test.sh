@@ -63,6 +63,14 @@ STATUS=$(curl -s -o /dev/null -w '%{http_code}' \
 [ "$STATUS" = "403" ] || { echo "expected 403, got $STATUS"; exit 1; }
 echo "403 as expected"
 
+step "Counsellor replies and the member sees it in the same conversation"
+curl -sf -X POST "$BASE/api/v1/agent/cases/$CASE_ID/reply" \
+  -H "Authorization: Bearer $AGENT_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"message":"Happy to help. Let us look at your options together."}' | json "['sender']" | grep -qx AGENT
+curl -sf -H "Authorization: Bearer $CUSTOMER_TOKEN" "$BASE/api/v1/conversations/$CONVERSATION_ID" \
+  | json "['messages'][-1]['sender']" | grep -qx AGENT
+curl -sf -H "Authorization: Bearer $AGENT_TOKEN" "$BASE/api/v1/agent/workload" | json "['openCases']"
+
 step "Agent resolves the case"
 curl -sf -X PATCH "$BASE/api/v1/agent/cases/$CASE_ID" \
   -H "Authorization: Bearer $AGENT_TOKEN" -H 'Content-Type: application/json' \
