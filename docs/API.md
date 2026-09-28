@@ -75,6 +75,7 @@ Send the token on every other call: `Authorization: Bearer <accessToken>`.
 | POST | `/api/v1/profile/record/items/bulk` | Add confirmed items after an upload (member only) | 201 |
 | DELETE | `/api/v1/profile/record/items/{itemId}` | Remove an item the member added (member only) | 204 |
 | POST | `/api/v1/profile/record/import` | Read an uploaded .txt, .csv or .pdf and suggest items; saves nothing (member only) | 200 |
+| GET | `/api/v1/pathways/recommended` | Recommended next credentials and programs (member only) | 200 |
 | GET | `/api/v1/ops/metrics` | Operational counters (agent only) | 200 |
 | GET | `/api/v1/health` | Application health | 200 |
 
@@ -384,6 +385,54 @@ not treated as errors.
 Removes an item the member entered. Service-record items cannot be removed.
 Another member's item id returns **404** `RECORD_ITEM_NOT_FOUND`, so ids
 cannot be probed.
+## GET /api/v1/pathways/recommended
+
+Member only (`CUSTOMER` role). Ranks civilian credentials, programs and
+degrees against what the signed-in member has already completed. Runs
+entirely inside the platform with no AI provider and no key, so it works in
+CI and when the provider is unavailable.
+
+The route reads the member's record with the `CREDENTIAL` permission set —
+occupational specialty, completed training and credentials held — and nothing
+else. Credentials the member already holds are never suggested.
+
+| Query | Type | Default | Rule |
+| --- | --- | --- | --- |
+| `limit` | integer | 5 | 1–10 |
+
+```json
+{
+  "basis": "COMPLETED_TRAINING",
+  "method": "tfidf-cosine/1",
+  "recommendations": [
+    {
+      "pathwayId": "comptia-security-plus",
+      "title": "CompTIA Security+",
+      "kind": "CERTIFICATION",
+      "field": "Cybersecurity",
+      "summary": "Baseline security credential covering threats, access control, risk management and securing networks.",
+      "score": 0.337,
+      "strength": "STRONG",
+      "reason": "NEXT_STEP",
+      "buildsOn": "CompTIA A+",
+      "matchedTerms": ["information assurance", "network"]
+    }
+  ],
+  "disclaimer": "Suggestions are based on the training and credentials on your record. ..."
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `basis` | `COMPLETED_TRAINING` when ranked from the record; `GENERAL` when nothing matched and broadly useful starting points are shown instead |
+| `score` | Cosine similarity between the member's record and the pathway, 0–1, plus 0.10 when `reason` is `NEXT_STEP` |
+| `strength` | `STRONG` ≥ 0.30 · `GOOD` ≥ 0.15 · `EXPLORATORY` below that |
+| `reason` | `NEXT_STEP` — follows on from a credential the member holds; `BUILDS_ON` — overlaps most with one item on the record; `STARTING_POINT` — general suggestion |
+| `buildsOn` | The credential or training the suggestion is explained by, in the member's own wording |
+| `matchedTerms` | Up to three terms the record and the pathway share, strongest first |
+
+Errors: **401** `UNAUTHORIZED` · **403** `FORBIDDEN` for a counsellor ·
+**422** `INVALID_REQUEST` for a `limit` outside 1–10.
 
 ---
 

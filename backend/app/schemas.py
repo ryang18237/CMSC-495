@@ -350,3 +350,42 @@ class RecordImportResponse(ApiModel):
     # chosen items to /api/v1/profile/record/items/bulk.
     candidates: list[RecordCandidate]
     skipped_lines: int
+
+
+# GET /api/v1/pathways/recommended (member-facing)
+# --------------------------------------------------------------------------
+class PathwayStrength(str, Enum):
+    STRONG = "STRONG"
+    GOOD = "GOOD"
+    EXPLORATORY = "EXPLORATORY"
+
+
+class PathwayReason(str, Enum):
+    NEXT_STEP = "NEXT_STEP"
+    BUILDS_ON = "BUILDS_ON"
+    STARTING_POINT = "STARTING_POINT"
+
+
+class PathwayBasis(str, Enum):
+    COMPLETED_TRAINING = "COMPLETED_TRAINING"
+    GENERAL = "GENERAL"
+
+
+class PathwayRecommendationView(ApiModel):
+    pathway_id: str
+    title: str
+    kind: str
+    field: str
+    summary: str
+    score: float
+    strength: PathwayStrength
+    reason: PathwayReason
+    builds_on: str | None
+    matched_terms: list[str]
+
+
+class PathwayRecommendationsResponse(ApiModel):
+    basis: PathwayBasis
+    method: str
+    recommendations: list[PathwayRecommendationView]
+    disclaimer: str

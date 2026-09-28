@@ -925,6 +925,52 @@
           }
         }
       }
+    },
+    "/api/v1/pathways/recommended": {
+      "get": {
+        "tags": [
+          "pathways"
+        ],
+        "summary": "Recommended Pathways",
+        "description": "Rank civilian pathways against what the signed-in member has completed.",
+        "operationId": "recommended_pathways_api_v1_pathways_recommended_get",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 10,
+              "minimum": 1,
+              "default": 5,
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PathwayRecommendationsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1595,6 +1641,128 @@
         ],
         "title": "MessageView"
       },
+      "PathwayBasis": {
+        "type": "string",
+        "enum": [
+          "COMPLETED_TRAINING",
+          "GENERAL"
+        ],
+        "title": "PathwayBasis"
+      },
+      "PathwayReason": {
+        "type": "string",
+        "enum": [
+          "NEXT_STEP",
+          "BUILDS_ON",
+          "STARTING_POINT"
+        ],
+        "title": "PathwayReason"
+      },
+      "PathwayRecommendationView": {
+        "properties": {
+          "pathwayId": {
+            "type": "string",
+            "title": "Pathwayid"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "score": {
+            "type": "number",
+            "title": "Score"
+          },
+          "strength": {
+            "$ref": "#/components/schemas/PathwayStrength"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/PathwayReason"
+          },
+          "buildsOn": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Buildson"
+          },
+          "matchedTerms": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Matchedterms"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pathwayId",
+          "title",
+          "kind",
+          "field",
+          "summary",
+          "score",
+          "strength",
+          "reason",
+          "buildsOn",
+          "matchedTerms"
+        ],
+        "title": "PathwayRecommendationView"
+      },
+      "PathwayRecommendationsResponse": {
+        "properties": {
+          "basis": {
+            "$ref": "#/components/schemas/PathwayBasis"
+          },
+          "method": {
+            "type": "string",
+            "title": "Method"
+          },
+          "recommendations": {
+            "items": {
+              "$ref": "#/components/schemas/PathwayRecommendationView"
+            },
+            "type": "array",
+            "title": "Recommendations"
+          },
+          "disclaimer": {
+            "type": "string",
+            "title": "Disclaimer"
+          }
+        },
+        "type": "object",
+        "required": [
+          "basis",
+          "method",
+          "recommendations",
+          "disclaimer"
+        ],
+        "title": "PathwayRecommendationsResponse"
+      },
+      "PathwayStrength": {
+        "type": "string",
+        "enum": [
+          "STRONG",
+          "GOOD",
+          "EXPLORATORY"
+        ],
+        "title": "PathwayStrength"
+      },
       "ProfileCompleteness": {
         "properties": {
           "percent": {
@@ -1966,6 +2134,10 @@
     {
       "name": "profile",
       "description": "My record: the member's service record and the training and credentials they added, used in every conversation. CUSTOMER role only."
+    },
+    {
+      "name": "pathways",
+      "description": "Recommended next credentials and programs, ranked against what the signed-in member has completed. Runs locally; no AI provider key needed."
     },
     {
       "name": "ops",
