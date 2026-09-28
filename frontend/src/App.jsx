@@ -3,6 +3,7 @@ import LoginPanel from './components/LoginPanel.jsx'
 import CustomerChat from './pages/CustomerChat.jsx'
 import MyRecordPanel from './components/MyRecordPanel.jsx'
 import AgentDashboard from './pages/AgentDashboard.jsx'
+import PathwayRecommendations from './components/PathwayRecommendations.jsx'
 import { api } from './api/client.js'
 
 const SESSION_KEY = 'csp.session'
@@ -24,6 +25,7 @@ export default function App()
 {
   const [session, setSession] = useState(readStoredSession)
   const [health, setHealth] = useState(null)
+  // Bumped when the member edits My record, so recommendations re-rank at once.
 
   useEffect(() =>
   {
@@ -85,6 +87,9 @@ export default function App()
 function MemberView({ session })
 {
   const [tab, setTab] = useState('chat')
+  // Bumped whenever the profile changes, so the recommendations re-rank
+  // against it without the member having to reload anything.
+  const [recordVersion, setRecordVersion] = useState(0)
 
   const tabs = [
     ['chat', 'Chat'],
@@ -110,11 +115,14 @@ function MemberView({ session })
 
       {/* Both stay mounted: switching tabs should not throw away a half-typed
           question or reload the profile. */}
-      <div hidden={tab !== 'chat'}>
+      <div className="member-layout" hidden={tab !== 'chat'}>
         <CustomerChat session={session} />
+        <aside className="member-sidebar">
+          <PathwayRecommendations session={session} refreshKey={recordVersion} />
+        </aside>
       </div>
       <div hidden={tab !== 'profile'}>
-        <MyRecordPanel session={session} />
+        <MyRecordPanel session={session} onChange={() => setRecordVersion((v) => v + 1)} />
       </div>
     </div>
   )

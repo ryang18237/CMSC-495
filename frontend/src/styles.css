@@ -547,3 +547,75 @@ button.link:hover:not(:disabled) { color: #8ab0f5; }
 }
 .record-review label > span { min-width: 0; overflow-wrap: anywhere; }
 .record-review input[type='checkbox'] { margin-top: 4px; flex: none; }
+
+/* ------------------------------------------------------------------ */
+/* Recommended next steps                                              */
+/*                                                                     */
+/* These sit in a 340px column, so the old flat list of equal-weight   */
+/* lines was unreadable: five cards each with a title, a kind, a       */
+/* summary and a matched-terms line, and nothing to say which to read  */
+/* first. Each card now leads with its rank and title, states in one   */
+/* line why it was picked, and keeps the detail subordinate.           */
+/* ------------------------------------------------------------------ */
+.pathways h2 { margin-bottom: 4px; }
+.pathway-list { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 10px; }
+
+.pathway {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  padding: 13px 14px 13px 42px;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.pathway:hover { border-color: var(--border-strong); background: var(--surface-3); }
+
+/* The rank, in the gutter the padding above reserves for it. */
+.pathway-rank {
+  position: absolute;
+  left: 12px;
+  top: 13px;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* The best match is the one to act on, so it is the only one filled in. */
+.pathway.top .pathway-rank { background: var(--accent); color: var(--accent-ink); }
+.pathway.top { border-color: var(--accent-line); }
+
+.pathway-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+.pathway-head strong { font-size: 14px; line-height: 1.35; font-weight: 650; }
+
+.pathway-reason {
+  margin: 7px 0 0;
+  font-size: 13px;
+  color: var(--accent);
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+}
+.pathway-reason::before { content: '\2192'; opacity: 0.7; }
+
+.pathway-summary { margin: 7px 0 0; font-size: 13px; color: var(--muted); }
+.pathway-meta { margin: 8px 0 0; font-size: 12px; color: var(--muted); opacity: 0.85; }
+.pathways .disclaimer { margin-top: 14px; font-size: 12px; }
+
+.pill.strength { white-space: nowrap; flex: none; }
+.pill.strength.strong { background: var(--ok-soft); color: var(--ok); }
+.pill.strength.good { background: var(--accent-soft); color: var(--accent); }
+.pill.strength.exploratory { background: var(--surface-3); color: var(--muted); }
+
+/* A tab panel that is a grid would otherwise ignore the hidden attribute. */
+[hidden] { display: none !important; }
