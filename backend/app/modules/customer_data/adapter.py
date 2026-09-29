@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from app.errors import DependencyUnavailableError
 from app.models import LegacyMemberMaster
 from app.modules.cache.service import get_cache
+from app.modules.customer_data.member_record import MemberRecordService
 
 # Legacy code lookups. Kept here so the codes stop at the adapter boundary.
 _BRANCHES = {
@@ -209,6 +210,27 @@ def _split_list(raw: str) -> list[str]:
     return [item.strip() for item in raw.split(";") if item.strip()]
 
 
+def _merge(official: list[str], added: list[str]) -> list[str]:
+    """The service record first, then what the member added, without repeats."""
+    seen = {item.lower() for item in official}
+    merged = list(official)
+    for item in added:
+        if item.lower() not in seen:
+            seen.add(item.lower())
+            merged.append(item)
+    return merged
+
+
+@dataclass(frozen=True)
+class ServiceRecordView:
+    """What the personnel system says, shown back to the member read-only."""
+
+    service_branch: str
+    occupational_specialty: str | None
+    completed_training: list[str]
+    credentials: list[str]
+
+
 class CustomerDataAdapter:
     def __init__(self, db: Session) -> None:
         self._db = db
@@ -229,11 +251,24 @@ class CustomerDataAdapter:
     def invalidate(user_id: uuid.UUID) -> int:
         """Drop cached context for one member.
 
-        Nothing calls this yet because the Alpha never writes to the personnel
-        record. It exists so that when a write path is added, there is an
-        obvious place to keep the cache honest.
+        Called whenever the member edits "My record", so the very next message
+        sees the change.
         """
         return get_cache().invalidate(f"member:{user_id}:")
+
+    def service_record(self, user_id: uuid.UUID) -> ServiceRecordView | None:
+        """The legacy record alone, translated, for the member to see."""
+        row = self._load(user_id)
+        if row is None:
+            return None
+        return ServiceRecordView(
+            service_branch=_BRANCHES.get(row.svc_brnch_cd, row.svc_brnch_cd),
+            occupational_specialty=_SPECIALTIES.get(
+                (row.svc_brnch_cd, row.occ_spec_cd), row.occ_spec_cd
+            ),
+            completed_training=_split_list(row.cmpltd_trng_txt),
+            credentials=_split_list(row.cred_erned_txt),
+        )
 
     def get_customer_context(self, user_id: uuid.UUID) -> CustomerContext:
         """Full translation, used where the whole picture is wanted."""
@@ -251,10 +286,26 @@ class CustomerDataAdapter:
             return cached
 
         row = self._load(user_id)
-        if row is None:
-            return UNKNOWN_CONTEXT
-
+        # What the member added in "My record". It counts exactly like the
+        # service record, under the same per-inquiry permission list.
+        added_training, added_credentials = MemberRecordService(self._db).names(user_id)
         allowed = _INQUIRY_FIELDS.get(inquiry_type.upper(), _INQUIRY_FIELDS["GENERAL"])
+
+        if row is None:
+            if not (added_training or added_credentials):
+                return UNKNOWN_CONTEXT
+            # No personnel record, but the member has told us what they have
+            # done. Use that rather than answering as if we knew nothing.
+            context = CustomerContext(
+                customer_ref="SELF-REPORTED",
+                service_branch="UNKNOWN",
+                completed_training=added_training,
+                credentials=added_credentials,
+                available_fields=[field for field in allowed if field != "service_branch"],
+            )
+            cache.set(cache_key, context)
+            return context
+
         branch = _BRANCHES.get(row.svc_brnch_cd, row.svc_brnch_cd)
 
         context = CustomerContext(
@@ -267,8 +318,8 @@ class CustomerDataAdapter:
             ),
             years_of_service=row.svc_yrs,
             separation_date=row.sep_dt,
-            completed_training=_split_list(row.cmpltd_trng_txt),
-            credentials=_split_list(row.cred_erned_txt),
+            completed_training=_merge(_split_list(row.cmpltd_trng_txt), added_training),
+            credentials=_merge(_split_list(row.cred_erned_txt), added_credentials),
             available_fields=list(allowed),
         )
         cache.set(cache_key, context)

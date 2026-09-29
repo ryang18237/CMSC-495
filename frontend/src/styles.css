@@ -340,3 +340,39 @@ button.link {
   background: #eef7ef;
   border-color: #cfe6d3;
 }
+
+/* Member layout: chat with the member's sidebar beside it */
+.member-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 16px;
+  align-items: start;
+}
+
+.member-sidebar { display: grid; gap: 16px; }
+
+@media (max-width: 900px) {
+  .member-layout { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* My record */
+.record h2 { margin-bottom: 4px; }
+.record-group { margin-top: 10px; }
+.record-list { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
+.record-list li { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.record-list.official li { color: var(--muted); }
+.record-add { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px; margin-top: 12px; }
+.record-add select,
+.record-add input {
+  padding: 7px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  background: var(--surface);
+  color: inherit;
+  min-width: 0;
+}
+.record-upload { display: grid; gap: 4px; margin-top: 10px; font-size: 13px; }
+.record-review { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; }
+.record-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }

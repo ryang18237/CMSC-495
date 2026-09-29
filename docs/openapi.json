@@ -743,6 +743,188 @@
           }
         }
       }
+    },
+    "/api/v1/profile/record": {
+      "get": {
+        "tags": [
+          "profile"
+        ],
+        "summary": "Get Record",
+        "description": "The service record (read-only) and everything the member has added.",
+        "operationId": "get_record_api_v1_profile_record_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberRecordResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/profile/record/items": {
+      "post": {
+        "tags": [
+          "profile"
+        ],
+        "summary": "Add Item",
+        "operationId": "add_item_api_v1_profile_record_items_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordItemRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberRecordItemView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/profile/record/items/bulk": {
+      "post": {
+        "tags": [
+          "profile"
+        ],
+        "summary": "Add Items",
+        "description": "Save the items the member confirmed after an upload. Repeats are counted, not errors.",
+        "operationId": "add_items_api_v1_profile_record_items_bulk_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordItemsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordItemsAddedResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/profile/record/items/{item_id}": {
+      "delete": {
+        "tags": [
+          "profile"
+        ],
+        "summary": "Remove Item",
+        "operationId": "remove_item_api_v1_profile_record_items__item_id__delete",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/profile/record/import": {
+      "post": {
+        "tags": [
+          "profile"
+        ],
+        "summary": "Import Record",
+        "description": "Read an uploaded .txt, .csv or .pdf and suggest items. Saves nothing.",
+        "operationId": "import_record_api_v1_profile_record_import_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordImportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordImportResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1248,6 +1430,66 @@
         ],
         "title": "LoginResponse"
       },
+      "MemberRecordItemView": {
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Itemid"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/RecordItemKind"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "source": {
+            "$ref": "#/components/schemas/RecordItemSource"
+          },
+          "addedAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Addedat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "itemId",
+          "kind",
+          "name",
+          "source",
+          "addedAt"
+        ],
+        "title": "MemberRecordItemView"
+      },
+      "MemberRecordResponse": {
+        "properties": {
+          "serviceRecord": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ServiceRecordSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "added": {
+            "items": {
+              "$ref": "#/components/schemas/MemberRecordItemView"
+            },
+            "type": "array",
+            "title": "Added"
+          }
+        },
+        "type": "object",
+        "required": [
+          "serviceRecord",
+          "added"
+        ],
+        "title": "MemberRecordResponse"
+      },
       "MessageRequest": {
         "properties": {
           "message": {
@@ -1390,6 +1632,133 @@
         ],
         "title": "RecommendationView"
       },
+      "RecordCandidate": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/RecordItemKind"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "name"
+        ],
+        "title": "RecordCandidate"
+      },
+      "RecordImportRequest": {
+        "properties": {
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "contentBase64": {
+            "type": "string",
+            "title": "Contentbase64"
+          }
+        },
+        "type": "object",
+        "required": [
+          "filename",
+          "contentBase64"
+        ],
+        "title": "RecordImportRequest"
+      },
+      "RecordImportResponse": {
+        "properties": {
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/RecordCandidate"
+            },
+            "type": "array",
+            "title": "Candidates"
+          },
+          "skippedLines": {
+            "type": "integer",
+            "title": "Skippedlines"
+          }
+        },
+        "type": "object",
+        "required": [
+          "candidates",
+          "skippedLines"
+        ],
+        "title": "RecordImportResponse"
+      },
+      "RecordItemKind": {
+        "type": "string",
+        "enum": [
+          "TRAINING",
+          "CREDENTIAL"
+        ],
+        "title": "RecordItemKind"
+      },
+      "RecordItemRequest": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "name"
+        ],
+        "title": "RecordItemRequest"
+      },
+      "RecordItemSource": {
+        "type": "string",
+        "enum": [
+          "MANUAL",
+          "UPLOAD"
+        ],
+        "title": "RecordItemSource"
+      },
+      "RecordItemsAddedResponse": {
+        "properties": {
+          "added": {
+            "items": {
+              "$ref": "#/components/schemas/MemberRecordItemView"
+            },
+            "type": "array",
+            "title": "Added"
+          },
+          "alreadyOnRecord": {
+            "type": "integer",
+            "title": "Alreadyonrecord"
+          }
+        },
+        "type": "object",
+        "required": [
+          "added",
+          "alreadyOnRecord"
+        ],
+        "title": "RecordItemsAddedResponse"
+      },
+      "RecordItemsRequest": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RecordItemRequest"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "RecordItemsRequest"
+      },
       "ReviewStatus": {
         "type": "string",
         "enum": [
@@ -1399,6 +1768,47 @@
         ],
         "title": "ReviewStatus",
         "description": "Lifecycle of a Learning Analytics recommendation.\n\nNothing reaches the production AI without an explicit APPROVED decision --\nthe \"approved changes only\" constraint in the architecture diagram."
+      },
+      "ServiceRecordSummary": {
+        "properties": {
+          "serviceBranch": {
+            "type": "string",
+            "title": "Servicebranch"
+          },
+          "occupationalSpecialty": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Occupationalspecialty"
+          },
+          "completedTraining": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Completedtraining"
+          },
+          "credentials": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Credentials"
+          }
+        },
+        "type": "object",
+        "required": [
+          "serviceBranch",
+          "occupationalSpecialty",
+          "completedTraining",
+          "credentials"
+        ],
+        "title": "ServiceRecordSummary"
       },
       "ValidationError": {
         "properties": {
@@ -1458,6 +1868,10 @@
     {
       "name": "agent",
       "description": "Counsellor dashboard: the escalation queue, replies and review. Every route requires the AGENT role."
+    },
+    {
+      "name": "profile",
+      "description": "My record: the member's service record and the training and credentials they added, used in every conversation. CUSTOMER role only."
     },
     {
       "name": "ops",

@@ -65,6 +65,7 @@ def _clean_transactional_tables() -> Iterator[None]:
             "escalation_cases",
             "conversation_messages",
             "conversations",
+            "member_record_items",
         ):
             db.execute(Base.metadata.tables[table].delete())
         db.commit()

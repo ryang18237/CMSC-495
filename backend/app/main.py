@@ -14,7 +14,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse, Response
 
-from app.api.v1 import agent, agent_handoff, auth, conversations, health, ops
+from app.api.v1 import agent, agent_handoff, auth, conversations, health, ops, profile
 from app.config import get_settings
 from app.errors import error_body, register_exception_handlers
 from app.modules.monitoring.service import get_metrics
@@ -71,6 +71,11 @@ OPENAPI_TAGS = [
         "description": "Counsellor dashboard: the escalation queue, replies and review. "
         "Every route requires the AGENT role.",
     },
+    {
+        "name": "profile",
+        "description": "My record: the member's service record and the training and "
+        "credentials they added, used in every conversation. CUSTOMER role only.",
+    },
     {"name": "ops", "description": "Operational metrics for this instance. AGENT role only."},
 ]
 
@@ -95,7 +100,7 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,
         allow_credentials=False,
-        allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
+        allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type"],
     )
 
@@ -108,8 +113,13 @@ def create_app() -> FastAPI:
         request.state.request_id = request_id
 
         declared = request.headers.get("content-length")
+        limit = (
+            settings.max_upload_bytes
+            if request.url.path == "/api/v1/profile/record/import"
+            else settings.max_request_bytes
+        )
         if declared is not None and declared.isdigit():
-            if int(declared) > settings.max_request_bytes:
+            if int(declared) > limit:
                 return JSONResponse(
                     status_code=413,
                     content=error_body(
@@ -135,6 +145,7 @@ def create_app() -> FastAPI:
     app.include_router(agent.router)
     app.include_router(agent_handoff.router)
     app.include_router(ops.router)
+    app.include_router(profile.router)
 
     return app
 

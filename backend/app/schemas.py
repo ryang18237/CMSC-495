@@ -260,3 +260,71 @@ class AnalyticsRunResponse(ApiModel):
 
     recommendations_created: int
     ran_at: datetime
+
+
+# --------------------------------------------------------------------------
+# My record -- /api/v1/profile/record (member-facing)
+# --------------------------------------------------------------------------
+class RecordItemKind(str, Enum):
+    TRAINING = "TRAINING"
+    CREDENTIAL = "CREDENTIAL"
+
+
+class RecordItemSource(str, Enum):
+    MANUAL = "MANUAL"
+    UPLOAD = "UPLOAD"
+
+
+class RecordItemRequest(ApiModel):
+    # Plain strings, validated in the service, so every bad item returns the
+    # one documented code (422 INVALID_RECORD_ITEM) rather than two.
+    kind: str
+    name: str
+
+
+class RecordItemsRequest(ApiModel):
+    items: list[RecordItemRequest]
+
+
+class MemberRecordItemView(ApiModel):
+    item_id: uuid.UUID
+    kind: RecordItemKind
+    name: str
+    source: RecordItemSource
+    added_at: datetime
+
+
+class ServiceRecordSummary(ApiModel):
+    service_branch: str
+    occupational_specialty: str | None
+    completed_training: list[str]
+    credentials: list[str]
+
+
+class MemberRecordResponse(ApiModel):
+    # What the personnel system holds -- read-only, null if there is no record.
+    service_record: ServiceRecordSummary | None
+    # What the member added. Used in every conversation alongside the above.
+    added: list[MemberRecordItemView]
+
+
+class RecordItemsAddedResponse(ApiModel):
+    added: list[MemberRecordItemView]
+    already_on_record: int
+
+
+class RecordImportRequest(ApiModel):
+    filename: str
+    content_base64: str
+
+
+class RecordCandidate(ApiModel):
+    kind: RecordItemKind
+    name: str
+
+
+class RecordImportResponse(ApiModel):
+    # Nothing is saved yet. The member confirms, then the client posts the
+    # chosen items to /api/v1/profile/record/items/bulk.
+    candidates: list[RecordCandidate]
+    skipped_lines: int

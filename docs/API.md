@@ -70,6 +70,11 @@ Send the token on every other call: `Authorization: Bearer <accessToken>`.
 | POST | `/api/v1/agent/cases/{caseId}/claim` | Take a case without replying yet (agent only) | 200 |
 | GET | `/api/v1/agent/cases/{caseId}/replies` | Counsellor replies on a case (agent only) | 200 |
 | GET | `/api/v1/agent/workload` | Open cases held by the signed-in counsellor (agent only) | 200 |
+| GET | `/api/v1/profile/record` | The member's service record and the items they added (member only) | 200 |
+| POST | `/api/v1/profile/record/items` | Add one training or credential item (member only) | 201 |
+| POST | `/api/v1/profile/record/items/bulk` | Add confirmed items after an upload (member only) | 201 |
+| DELETE | `/api/v1/profile/record/items/{itemId}` | Remove an item the member added (member only) | 204 |
+| POST | `/api/v1/profile/record/import` | Read an uploaded .txt, .csv or .pdf and suggest items; saves nothing (member only) | 200 |
 | GET | `/api/v1/ops/metrics` | Operational counters (agent only) | 200 |
 | GET | `/api/v1/health` | Application health | 200 |
 
@@ -250,6 +255,108 @@ customer does not have to restart the interaction.
 `PATCH /api/v1/agent/cases/{caseId}` accepts `{"status": "ASSIGNED"}`,
 `"RESOLVED"` or `"CLOSED"`. Resolving or closing a case closes the
 conversation. Updating an already-closed case returns **409**.
+
+---
+
+## My record
+
+Member only (`CUSTOMER` role); a counsellor receives **403**. Everything acts
+on the signed-in member.
+
+The legacy personnel record is read-only and often incomplete — a
+certification earned after separation never reaches it. A member adds such
+items once. The Customer Data Adapter merges them with the service record, so
+**every later conversation** uses them under the same per-question permission
+rules; nobody re-enters anything per conversation. Editing the record takes
+effect on the next message.
+
+### GET /api/v1/profile/record → 200
+
+```json
+{
+  "serviceRecord": {
+    "serviceBranch": "Army",
+    "occupationalSpecialty": "Information Technology Specialist",
+    "completedTraining": ["Basic Leader Course", "Network Administration Course"],
+    "credentials": ["CompTIA A+"]
+  },
+  "added": [
+    {
+      "itemId": "3f0c9a52-8c1e-4b7a-9d2e-1a6f5b0c7d11",
+      "kind": "CREDENTIAL",
+      "name": "CompTIA Security+",
+      "source": "MANUAL",
+      "addedAt": "2026-09-29T02:10:00Z"
+    }
+  ]
+}
+```
+
+`serviceRecord` is `null` when the member has no personnel record; the items
+they add are still used.
+
+### POST /api/v1/profile/record/items → 201
+
+```json
+{ "kind": "CREDENTIAL", "name": "CompTIA Security+" }
+```
+
+`kind` is `TRAINING` or `CREDENTIAL`. Whitespace is tidied. Returns the item.
+
+| HTTP | Code | When |
+| --- | --- | --- |
+| 409 | `RECORD_ITEM_EXISTS` | The same kind and name is already there (case-insensitive) |
+| 422 | `INVALID_RECORD_ITEM` | Unknown kind, or a name that is blank or over 200 characters |
+| 422 | `RECORD_ITEM_LIMIT` | The record already holds 100 items |
+
+### POST /api/v1/profile/record/import → 200
+
+Reads a document and **suggests** items. Nothing is saved and the document is
+not stored. This route accepts up to 3 MB; every other route keeps the 64 KB
+limit.
+
+```json
+{ "filename": "transcript.pdf", "contentBase64": "JVBERi0xLjcK..." }
+```
+
+```json
+{
+  "candidates": [
+    { "kind": "TRAINING", "name": "Network Administration Course" },
+    { "kind": "CREDENTIAL", "name": "Cisco CCNA" }
+  ],
+  "skippedLines": 4
+}
+```
+
+Lines are kept only when they read like a course or a credential, or sit under
+a heading such as *Certifications* or *Military Courses*. Dates, numbering,
+course codes and page furniture are removed. The member reviews the list.
+
+| HTTP | Code | When |
+| --- | --- | --- |
+| 413 | `PAYLOAD_TOO_LARGE` | Over 3 MB |
+| 422 | `UNSUPPORTED_RECORD_FILE` | Not `.txt`, `.csv` or `.pdf` |
+| 422 | `INVALID_RECORD_FILE` | Not valid base64, or an unreadable PDF |
+
+### POST /api/v1/profile/record/items/bulk → 201
+
+Saves the items the member confirmed. Items already on the record are counted,
+not treated as errors.
+
+```json
+{ "items": [ { "kind": "CREDENTIAL", "name": "Cisco CCNA" } ] }
+```
+
+```json
+{ "added": [ { "itemId": "…", "kind": "CREDENTIAL", "name": "Cisco CCNA", "source": "UPLOAD", "addedAt": "…" } ], "alreadyOnRecord": 0 }
+```
+
+### DELETE /api/v1/profile/record/items/{itemId} → 204
+
+Removes an item the member added. Service-record items cannot be removed.
+Another member's item id returns **404** `RECORD_ITEM_NOT_FOUND`, so ids
+cannot be probed.
 
 ---
 
@@ -444,11 +551,11 @@ Every failure uses the same shape:
 | 400 | Malformed request or invalid syntax | `INVALID_IDENTIFIER`, `BAD_REQUEST` |
 | 401 | Authentication missing, expired or invalid | `UNAUTHORIZED` |
 | 403 | Authenticated user lacks permission | `FORBIDDEN` |
-| 404 | Resource not found | `NOT_FOUND` (unknown route), `CONVERSATION_NOT_FOUND`, `CASE_NOT_FOUND`, `MESSAGE_NOT_FOUND`, `RECOMMENDATION_NOT_FOUND`, `ARTICLE_NOT_FOUND` |
+| 404 | Resource not found | `NOT_FOUND` (unknown route), `RECORD_ITEM_NOT_FOUND`, `CONVERSATION_NOT_FOUND`, `CASE_NOT_FOUND`, `MESSAGE_NOT_FOUND`, `RECOMMENDATION_NOT_FOUND`, `ARTICLE_NOT_FOUND` |
 | 405 | Method not allowed on this route | `METHOD_NOT_ALLOWED` |
-| 409 | Conflicting conversation, case or review state | `CONFLICT`, `ESCALATION_ALREADY_ACTIVE`, `CONVERSATION_CLOSED`, `CASE_ALREADY_CLOSED`, `CASE_NOT_OPEN`, `CASE_ALREADY_ASSIGNED`, `FEEDBACK_ALREADY_RECORDED`, `RECOMMENDATION_ALREADY_REVIEWED` |
+| 409 | Conflicting conversation, case or review state | `CONFLICT`, `ESCALATION_ALREADY_ACTIVE`, `CONVERSATION_CLOSED`, `CASE_ALREADY_CLOSED`, `CASE_NOT_OPEN`, `CASE_ALREADY_ASSIGNED`, `RECORD_ITEM_EXISTS`, `FEEDBACK_ALREADY_RECORDED`, `RECOMMENDATION_ALREADY_REVIEWED` |
 | 413 | Payload exceeds the permitted size | `PAYLOAD_TOO_LARGE` |
-| 422 | Valid syntax, failed validation | `INVALID_REQUEST` (schema), `UNPROCESSABLE_REQUEST`, `INVALID_MESSAGE`, `INVALID_REPLY`, `INVALID_COMMENT`, `INVALID_REVIEW_DECISION` |
+| 422 | Valid syntax, failed validation | `INVALID_REQUEST` (schema), `UNPROCESSABLE_REQUEST`, `INVALID_MESSAGE`, `INVALID_REPLY`, `INVALID_COMMENT`, `INVALID_REVIEW_DECISION`, `INVALID_RECORD_ITEM`, `RECORD_ITEM_LIMIT`, `UNSUPPORTED_RECORD_FILE`, `INVALID_RECORD_FILE` |
 | 429 | Rate limit exceeded | `RATE_LIMIT_EXCEEDED` |
 | 500 | Unexpected server fault; details are logged, never returned | `INTERNAL_ERROR` |
 | 502 | Upstream returned an invalid response | `UPSTREAM_INVALID_RESPONSE` |

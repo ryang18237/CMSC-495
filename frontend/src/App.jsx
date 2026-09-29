@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import LoginPanel from './components/LoginPanel.jsx'
 import CustomerChat from './pages/CustomerChat.jsx'
+import MyRecordPanel from './components/MyRecordPanel.jsx'
 import AgentDashboard from './pages/AgentDashboard.jsx'
 import { api } from './api/client.js'
 
@@ -67,7 +68,12 @@ export default function App()
       {session.role === 'AGENT' ? (
         <AgentDashboard session={session} />
       ) : (
-        <CustomerChat session={session} />
+        <div className="member-layout">
+          <CustomerChat session={session} />
+          <aside className="member-sidebar">
+            <MyRecordPanel session={session} />
+          </aside>
+        </div>
       )}
     </main>
   )

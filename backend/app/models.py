@@ -148,6 +148,30 @@ class KnowledgeArticle(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
 
 
+class MemberRecordItem(Base):
+    """Training or a credential the member added themselves.
+
+    The legacy personnel record is read-only and often behind: a certification
+    earned after separation, or a civilian course, never reaches it. Members
+    add those here once, and every later conversation and recommendation uses
+    them without the member having to repeat themselves. Only the Customer
+    Data Adapter reads this table; it merges these rows with the legacy record.
+    """
+
+    __tablename__ = "member_record_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(GUID, primary_key=True, default=_new_id)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        GUID, ForeignKey("users.id"), nullable=False, index=True
+    )
+    # TRAINING or CREDENTIAL
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    # MANUAL (typed in) or UPLOAD (confirmed from an uploaded document)
+    source: Mapped[str] = mapped_column(String(10), nullable=False, default="MANUAL")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)
+
+
 class LegacyMemberMaster(Base):
     """Stand-in for the existing personnel system of record.
 
