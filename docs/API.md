@@ -356,13 +356,13 @@ and a candidate can only be decided once (**409**
 missing candidate returns **404** `RECOMMENDATION_NOT_FOUND`.
 
 `POST /api/v1/agent/analytics/run?days=7` runs the worker once and returns
-`{"recommendationsCreated": 1, "ranAt": "..."}`. **Alpha scope:** in the target
+`{"recommendationsCreated": 1, "ranAt": "..."}`. **Scope:** in the target
 system a scheduler drives the worker off the message queue; this endpoint runs
 the same code so the asynchronous path can be demonstrated on demand.
 
 **Approving a candidate does not apply it.** Nothing in the platform reads an
 `APPROVED` recommendation and changes a prompt or a routing rule; that step is
-deliberately out of scope for the Alpha.
+deliberately out of scope for this release.
 
 ---
 
@@ -388,7 +388,7 @@ balancer each instance reports its own, which `instanceId` makes explicit.
 }
 ```
 
-**Alpha scope:** counters live in process memory and are read back through this
+**Scope:** counters live in process memory and are read back through this
 endpoint. A production deployment exports them to a monitoring system.
 
 ---
@@ -399,7 +399,7 @@ endpoint. A production deployment exports them to a monitoring system.
 {
   "status": "healthy",
   "timestamp": "2026-08-27T20:30:00Z",
-  "version": "0.1.0-alpha",
+  "version": "1.0.0",
   "instanceId": "vm-e175bb61",
   "dependencies": {
     "database": "ok",
