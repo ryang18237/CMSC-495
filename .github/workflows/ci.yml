@@ -79,11 +79,43 @@ jobs:
         working-directory: .
         run: python scripts/export_openapi.py --check
 
+      - name: Architecture diagram is current
+        working-directory: .
+        run: python scripts/generate_module_graph.py --check
+
+      - name: Maintainability (radon, no function above CC 15)
+        working-directory: .
+        run: python scripts/quality_report.py --max-cc 15
+
       - name: Apply schema and seed synthetic data
         run: python -m app.bootstrap
 
-      - name: Tests (pytest against PostgreSQL)
-        run: pytest -q
+      - name: Tests with coverage (pytest against PostgreSQL)
+        # .coveragerc fails the step below 90% combined line and branch coverage.
+        run: pytest -q --cov --cov-report=term --cov-report=xml --cov-report=html
+
+      - name: Coverage summary
+        if: always()
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import xml.etree.ElementTree as ET
+          root = ET.parse("coverage.xml").getroot()
+          line = float(root.get("line-rate")) * 100
+          branch = float(root.get("branch-rate")) * 100
+          print("## Backend coverage\n")
+          print("| Lines | Branches |\n| ---: | ---: |")
+          print(f"| {line:.1f}% | {branch:.1f}% |")
+          PY
+
+      - name: Upload backend coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: |
+            backend/htmlcov
+            backend/coverage.xml
+          retention-days: 14
 
   frontend:
     name: Frontend (lint, tests, build)
@@ -108,8 +140,27 @@ jobs:
       - name: Lint (eslint)
         run: npm run lint
 
-      - name: Tests (vitest)
-        run: npm test
+      - name: Tests with coverage (vitest)
+        # vite.config.js fails the step below 80% lines or 75% branches.
+        run: npm run test:coverage
+
+      - name: Coverage summary
+        if: always()
+        run: |
+          node -e "
+            const t = require('./coverage/coverage-summary.json').total;
+            console.log('## Frontend coverage\n');
+            console.log('| Lines | Branches | Functions |\n| ---: | ---: | ---: |');
+            console.log('| ' + t.lines.pct + '% | ' + t.branches.pct + '% | ' + t.functions.pct + '% |');
+          " >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload frontend coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: frontend/coverage
+          retention-days: 14
 
       - name: Production build
         run: npm run build
@@ -189,6 +240,30 @@ jobs:
       - name: Run the Learning Analytics Worker
         working-directory: backend
         run: python -m app.modules.analytics.worker
+
+      - name: Performance benchmark (p95 must stay under 5 s)
+        # A second instance with the per-member message limit raised, so the
+        # conversation scenario measures the platform rather than the limiter.
+        working-directory: backend
+        run: |
+          RATE_LIMIT_MESSAGES_PER_MINUTE=100000 nohup python -m uvicorn app.main:app \
+            --host 127.0.0.1 --port 8001 > bench-server.log 2>&1 &
+          for attempt in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8001/api/v1/health > /dev/null && break
+            sleep 1
+          done
+          python ../scripts/benchmark.py --base-url http://127.0.0.1:8001 \
+            --requests 200 --concurrency 10 --markdown benchmark.md
+          { echo "## Performance benchmark"; echo; cat benchmark.md; } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload benchmark results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark
+          path: backend/benchmark.md
+          if-no-files-found: ignore
+          retention-days: 30
 
       - name: Dump server log on failure
         if: failure()

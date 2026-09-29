@@ -684,6 +684,17 @@ def run_checks(python: Path, env: dict[str, str], args_holder: argparse.Namespac
     if subprocess.run(export, cwd=ROOT, env=env).returncode != 0:
         failures.append("openapi contract")
 
+    # The dependency diagram is generated from the imports, and no function
+    # may grow past the complexity limit. Both run in CI as well.
+    for label, script, extra in [
+        ("architecture: module graph is current", "generate_module_graph.py", ["--check"]),
+        ("quality: no function above complexity 15", "quality_report.py", ["--max-cc", "15"]),
+    ]:
+        step(label)
+        command = [str(python), str(ROOT / "scripts" / script), *extra]
+        if subprocess.run(command, cwd=ROOT, env=env, stdout=subprocess.DEVNULL).returncode != 0:
+            failures.append(label.split(":")[0])
+
     npm = npm_command()
     if npm is None:
         warn("npm not found, skipping the web client checks.")

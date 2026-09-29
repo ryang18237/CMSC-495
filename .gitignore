@@ -7,6 +7,11 @@ venv/
 .mypy_cache/
 .ruff_cache/
 *.egg-info/
+# Coverage output (pytest-cov); CI uploads these as build artifacts instead
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
 
 # Node
 node_modules/
