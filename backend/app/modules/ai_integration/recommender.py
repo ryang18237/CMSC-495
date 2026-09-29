@@ -296,6 +296,89 @@ def _starters(index: _Index, held: set[str], limit: int) -> RecommendationSet:
     return RecommendationSet(basis="GENERAL", recommendations=starters[:limit])
 
 
+@dataclass(frozen=True)
+class _Member:
+    """A member's record, vectorised once and reused for every pathway."""
+
+    vector: dict[str, float]
+    # Each item on the record kept separately, so a suggestion can name the
+    # one it builds on most rather than pointing at the record as a whole.
+    sources: list[tuple[str, dict[str, float]]]
+    # The member's own wording, used to show matched terms unstemmed.
+    texts: list[str]
+
+
+def _vectorise_member(profile: MemberProfile, idf: dict[str, float]) -> _Member:
+    items = [*profile.completed_training, *profile.credentials]
+    sources = [(item, _weights(tokenize(item), idf)) for item in items]
+    texts = list(items)
+
+    if profile.occupational_specialty:
+        specialty = profile.occupational_specialty
+        sources.append((f"your {specialty} experience", _weights(tokenize(specialty), idf)))
+        texts.append(specialty)
+
+    tokens = [token for text in texts for token in tokenize(text)]
+    return _Member(vector=_weights(tokens, idf), sources=sources, texts=texts)
+
+
+def _closest_source(member: _Member, vector: dict[str, float]) -> str | None:
+    """The single item on the record that overlaps most with this pathway."""
+    best_label, best_score = None, 0.0
+    for label, source_vector in member.sources:
+        overlap = _cosine(source_vector, vector)
+        if overlap > best_score:
+            best_label, best_score = label, overlap
+    return best_label
+
+
+def _matched_terms(member: _Member, pathway: Pathway, vector: dict[str, float]) -> list[str]:
+    """Up to three shared terms, strongest contribution first.
+
+    Phrases are preferred to their parts: "network administration" says more
+    than "network" and "administration" listed separately.
+    """
+    shared = sorted(
+        (
+            (member.vector[term] * weight, term)
+            for term, weight in vector.items()
+            if term in member.vector
+        ),
+        reverse=True,
+    )
+    top = [term for _, term in shared[:8]]
+    covered = {word for term in top if "_" in term for word in term.split("_")}
+    forms = _surface_forms([*member.texts, pathway.title, pathway.summary, *pathway.keywords])
+    return [_display(term, forms) for term in top if "_" in term or term not in covered][:3]
+
+
+def _score_pathway(
+    pathway: Pathway, index: _Index, member: _Member, held_titles: dict[str, str]
+) -> Recommendation | None:
+    """Score one pathway for one member, or None if it is not worth showing."""
+    vector = index.vectors[pathway.pathway_id]
+    progression_from = next(
+        (held_titles[prior] for prior in pathway.follows if prior in held_titles), None
+    )
+    score = min(
+        1.0, _cosine(member.vector, vector) + (PROGRESSION_BONUS if progression_from else 0.0)
+    )
+    if score < MIN_SCORE:
+        return None
+
+    # A held credential this pathway follows on from is the explanation when
+    # there is one, because "next step after X" is the clearest reason a
+    # person can be given.
+    return Recommendation(
+        pathway=pathway,
+        score=round(score, 3),
+        strength=_strength(score),
+        reason="NEXT_STEP" if progression_from else "BUILDS_ON",
+        builds_on=progression_from or _closest_source(member, vector),
+        matched_terms=_matched_terms(member, pathway, vector),
+    )
+
+
 def recommend(profile: MemberProfile, limit: int = 5) -> RecommendationSet:
     """Rank catalog pathways against a member's record."""
     index = _index()
@@ -304,92 +387,15 @@ def recommend(profile: MemberProfile, limit: int = 5) -> RecommendationSet:
     if profile.is_empty:
         return _starters(index, held, limit)
 
-    # Each thing the member has done is kept as a separate, labelled source so
-    # that a recommendation can name the one it builds on most.
-    sources: list[tuple[str, dict[str, float]]] = [
-        (item, _weights(tokenize(item), index.idf))
-        for item in [*profile.completed_training, *profile.credentials]
-    ]
-    if profile.occupational_specialty:
-        sources.append(
-            (
-                f"your {profile.occupational_specialty} experience",
-                _weights(tokenize(profile.occupational_specialty), index.idf),
-            )
-        )
+    member = _vectorise_member(profile, index.idf)
+    held_titles = {p.pathway_id: p.title for p in index.pathways if p.pathway_id in held}
 
-    member_tokens: list[str] = []
-    for item in [*profile.completed_training, *profile.credentials]:
-        member_tokens += tokenize(item)
-    if profile.occupational_specialty:
-        member_tokens += tokenize(profile.occupational_specialty)
-    member_vector = _weights(member_tokens, index.idf)
-
-    member_texts = [*profile.completed_training, *profile.credentials]
-    if profile.occupational_specialty:
-        member_texts.append(profile.occupational_specialty)
-
-    held_titles = {
-        pathway.pathway_id: pathway.title
+    ranked = [
+        recommendation
         for pathway in index.pathways
-        if pathway.pathway_id in held
-    }
-
-    ranked: list[Recommendation] = []
-    for pathway in index.pathways:
-        if pathway.pathway_id in held:
-            continue
-
-        vector = index.vectors[pathway.pathway_id]
-        similarity = _cosine(member_vector, vector)
-
-        progression_from = next(
-            (held_titles[prior] for prior in pathway.follows if prior in held_titles), None
-        )
-        score = min(1.0, similarity + (PROGRESSION_BONUS if progression_from else 0.0))
-        if score < MIN_SCORE:
-            continue
-
-        # Explain with the single source that overlaps most. A held credential
-        # this pathway follows on from wins, because "next step after X" is
-        # the clearest reason a person can be given.
-        if progression_from:
-            builds_on: str | None = progression_from
-        else:
-            best_label, best_score = None, 0.0
-            for label, source_vector in sources:
-                overlap = _cosine(source_vector, vector)
-                if overlap > best_score:
-                    best_label, best_score = label, overlap
-            builds_on = best_label
-
-        shared = sorted(
-            (
-                (member_vector[term] * weight, term)
-                for term, weight in vector.items()
-                if term in member_vector
-            ),
-            reverse=True,
-        )
-        # Prefer phrases to their parts: "network administration" says more
-        # than "network" and "administration" listed separately. Order is
-        # still by contribution to the score.
-        top = [term for _, term in shared[:8]]
-        covered = {word for term in top if "_" in term for word in term.split("_")}
-        forms = _surface_forms([*member_texts, pathway.title, pathway.summary, *pathway.keywords])
-        terms = [_display(term, forms) for term in top if "_" in term or term not in covered][:3]
-
-        ranked.append(
-            Recommendation(
-                pathway=pathway,
-                score=round(score, 3),
-                strength=_strength(score),
-                reason="NEXT_STEP" if progression_from else "BUILDS_ON",
-                builds_on=builds_on,
-                matched_terms=terms,
-            )
-        )
-
+        if pathway.pathway_id not in held
+        and (recommendation := _score_pathway(pathway, index, member, held_titles)) is not None
+    ]
     if not ranked:
         return _starters(index, held, limit)
 
