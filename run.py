@@ -24,6 +24,7 @@ still work exactly as before for anyone who prefers to run them by hand.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import platform
 import shutil
@@ -121,18 +122,49 @@ def ensure_backend_environment(force: bool = False) -> Path:
         [str(python), "-c", "import fastapi, sqlalchemy, jwt, bcrypt"],
         capture_output=True,
     )
+    # A teammate's existing environment has the core packages but not a tool
+    # added later (a new test plugin, say), so the probe alone would pass and
+    # `run.py --check` would then fail on the missing import. Recording what the
+    # environment was installed from catches that and installs the difference.
+    current = _requirements_hash()
+    try:
+        recorded = REQUIREMENTS_MARKER.read_text(encoding="utf-8").strip()
+    except OSError:
+        recorded = ""
+
     if probe.returncode != 0:
         step("Installing backend dependencies (first run only, this takes a minute)")
         subprocess.run(
             [str(python), "-m", "pip", "install", "--quiet", "--upgrade", "pip"],
             check=True,
         )
+    elif recorded != current:
+        step("Updating backend dependencies (the requirements files changed)")
+
+    if probe.returncode != 0 or recorded != current:
         subprocess.run(
             [str(python), "-m", "pip", "install", "-r", str(BACKEND / "requirements-dev.txt")],
             check=True,
         )
+        try:
+            REQUIREMENTS_MARKER.write_text(current, encoding="utf-8")
+        except OSError:
+            pass
 
     return python
+
+
+REQUIREMENTS_MARKER = VENV / ".requirements-hash"
+
+
+def _requirements_hash() -> str:
+    digest = hashlib.sha256()
+    for name in ("requirements.txt", "requirements-dev.txt"):
+        try:
+            digest.update((BACKEND / name).read_bytes())
+        except OSError:
+            pass
+    return digest.hexdigest()[:16]
 
 
 def npm_command() -> str | None:
@@ -149,6 +181,23 @@ PLATFORM_MARKER = "node_modules/.install-platform"
 
 def _platform_tag() -> str:
     return f"{platform.system()}-{platform.machine()}"
+
+
+def _lock_hash() -> str:
+    try:
+        return hashlib.sha256((FRONTEND / "package-lock.json").read_bytes()).hexdigest()[:16]
+    except OSError:
+        return ""
+
+
+def _marker_value() -> str:
+    """Platform the tree was built for, and the lockfile it was built from.
+
+    The platform half catches node_modules copied between machines; the lockfile
+    half catches a pull that added a package, which would otherwise surface as
+    "Cannot find module" the first time a teammate runs the new script.
+    """
+    return f"{_platform_tag()}:{_lock_hash()}"
 
 
 def _frontend_toolchain_loads() -> bool:
@@ -177,7 +226,7 @@ def _npm_install(npm: str) -> None:
         warn("The install failed. Clearing node_modules and trying once more.")
         shutil.rmtree(FRONTEND / "node_modules", ignore_errors=True)
         subprocess.run([npm, "install", "--no-audit", "--no-fund"], cwd=FRONTEND, check=True)
-    (FRONTEND / PLATFORM_MARKER).write_text(_platform_tag(), encoding="utf-8")
+    (FRONTEND / PLATFORM_MARKER).write_text(_marker_value(), encoding="utf-8")
 
 
 def ensure_frontend_environment(npm: str, force: bool = False) -> None:
@@ -195,19 +244,20 @@ def ensure_frontend_environment(npm: str, force: bool = False) -> None:
         except OSError:
             pass
 
-        if recorded == tag:
+        if recorded == _marker_value():
             return
-        if not recorded and _frontend_toolchain_loads():
-            # Installed by hand rather than by this script, and healthy.
-            try:
-                marker.write_text(tag, encoding="utf-8")
-            except OSError:
-                pass
+        recorded_platform = recorded.partition(":")[0]
+        if recorded_platform == tag or (not recorded and _frontend_toolchain_loads()):
+            # Right platform -- only the dependency list changed, or the tree
+            # was installed by hand. An in-place install adds what is missing
+            # without throwing away what is already there.
+            step("Updating web client dependencies (package-lock.json changed)")
+            _npm_install(npm)
             return
 
         step("Repairing web client dependencies")
         info(
-            f"node_modules was installed for {recorded or 'a different platform'}; "
+            f"node_modules was installed for {recorded_platform or 'a different platform'}; "
             f"this machine is {tag}."
         )
         shutil.rmtree(modules, ignore_errors=True)
