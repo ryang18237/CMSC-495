@@ -1,7 +1,7 @@
 # SkillBridge AI — Architecture Design Document
 
 **Owner:** Ravonne Wade, Lead Architect
-**Status:** Alpha release (Unit 5)
+**Status:** Final release, version 1.0.0 (first issued at the Unit 5 Alpha)
 **Companion documents:** `ARCHITECTURE.md` (as-built notes and the generated
 module graph), `API.md` (interface contracts), `adr/` (decision records)
 
@@ -88,7 +88,7 @@ boundary real; without it, a component slowly absorbs its neighbours.
 | **Conversation Management** | Orchestrate one member turn from validation to persistence | `ConversationService` | Talk to a provider, read the personnel schema, construct prompts |
 | **Customer Data Adapter** | Translate the legacy personnel record into `CustomerContext`, and decide which fields an inquiry may see | `CustomerDataAdapter` | Leak legacy column names or codes to any caller |
 | **Knowledge Base** | Retrieve approved reference articles | `KnowledgeBaseService` | Expose storage details; rank by anything the caller cannot inspect |
-| **AI Integration** | Build a provider-neutral prompt, call the provider, apply the retry policy, produce a safe fallback | `AIIntegrationService` | Touch the database; decide whether an answer reaches a member |
+| **AI Integration** | Build a provider-neutral prompt, call the provider, apply the retry policy, produce a safe fallback; rank pathways against a member profile | `AIIntegrationService`, `recommend()` | Touch the database; decide whether an answer reaches a member |
 | **Response Validation** | Decide whether a generated response may be shown, and what escalation a failure implies | `ResponseValidationService` | Generate text; call a provider |
 | **Escalation** | Own escalation rules, case creation, queue placement, handover context, and the counsellor reply path | `EscalationService`, `AgentHandoffService` | Query the personnel database; build prompts |
 | **Feedback** | Record member and counsellor feedback and publish an event | `FeedbackService` | Change AI behaviour directly |
@@ -142,6 +142,7 @@ graph LR
     api --> ai
     api --> cache
     api --> monitoring
+    api --> customer_data
 
     conversation --> customer_data
     conversation --> knowledge
@@ -166,6 +167,13 @@ Read every arrow as "depends on". Three shapes are load-bearing:
   A dependency in the other direction would risk a cycle and make them
   impossible to call from arbitrary places.
 
+One edge was added for the final release: `api → customer_data`, so the
+pathway route can read a member's record through the adapter — with the same
+permission list the chat uses — and hand plain values to the recommender.
+The alternative, the recommender reading the record itself, would have given
+AI Integration its first dependency on another component. ADR 0006 records the
+choice.
+
 ### 5.2 How the boundaries are enforced
 
 Prose cannot stop anyone adding an import. `backend/tests/test_architecture_boundaries.py`
@@ -184,8 +192,11 @@ parses the source and fails the build when a rule is broken:
 | Shared contracts import no component | Vocabulary stays vocabulary |
 | Components on disk match this document | A new folder is a new box on this diagram |
 
-`scripts/generate_module_graph.py` derives the diagram above from the real
-imports, and `--check` fails if this document has drifted from the code.
+`scripts/generate_module_graph.py` derives the dependency diagram in
+`ARCHITECTURE.md` from the real imports, and `--check` fails CI if it has
+drifted from the code. `scripts/quality_report.py --max-cc 15` fails CI if any
+function grows past a cyclomatic complexity of 15, which keeps the
+"one responsibility" claim in section 4 measurable.
 
 Changing one of these rules is an architecture decision and belongs in `adr/`,
 not in a quiet edit.
@@ -329,12 +340,36 @@ graph LR
 An individual conversation never changes production AI behaviour. Feedback
 contributes to an aggregate; the worker turns recurring patterns into
 candidates marked `PENDING_REVIEW`; a person approves or rejects each one. Even
-an approved candidate is applied by hand in the Alpha — nothing reads an
+an approved candidate is applied by hand in this release — nothing reads an
 approval and reconfigures the running system.
 
 The event is written in the same transaction as the feedback itself. That is a
 genuine advantage over publishing to a broker, where a crash between the commit
 and the publish loses the event (ADR 0003).
+
+### 6.6 Pathway recommendation
+
+```mermaid
+sequenceDiagram
+    participant M as Member
+    participant API as Pathways route
+    participant CDA as Customer Data Adapter
+    participant R as Recommender (AI Integration)
+
+    M->>API: GET /api/v1/pathways/recommended
+    API->>API: Require CUSTOMER role
+    API->>CDA: get_relevant_account_data(member, CREDENTIAL)
+    CDA-->>API: specialty, completed training, credentials held
+    API->>R: recommend(plain lists, limit)
+    R->>R: TF-IDF vectors, cosine similarity, follows-on bonus
+    R->>R: Drop held credentials, explain each suggestion
+    R-->>API: Ranked pathways with reasons
+    API-->>M: Recommendations, basis, disclaimer
+```
+
+No model, no network and no write. The recommender receives exactly the
+fields a credential question is permitted to see — never the branch, pay
+grade or separation date — and nothing leaves the process (ADR 0006).
 
 ---
 
@@ -366,7 +401,7 @@ not write.
 | Request correlation | Entry-point middleware | A request id on every response and in every error body |
 | Observability | Monitoring component | Counters are per-instance, and the instance id is reported so that is never mistaken for a cluster total |
 | Caching | Cache component | Keyed to prevent cross-inquiry reuse (section 6.2) |
-| Rate limiting | Per authenticated user | In-process in the Alpha; see section 10 |
+| Rate limiting | Per authenticated user | In-process; see section 10 |
 
 ---
 
@@ -374,23 +409,24 @@ not write.
 
 | Attribute | How the architecture addresses it | Verified? |
 | --- | --- | --- |
-| Scalability | Stateless instances; shared state in the database; background analysis off the request path | Architecturally yes; **not load tested** |
-| Performance | Bounded prompt size, cached reference data, latency measured against a five-second target | Measured locally; not under load |
+| Scalability | Stateless instances; shared state in the database; background analysis off the request path | Single instance benchmarked in CI; **multi-instance capacity not demonstrated** |
+| Performance | Bounded prompt size, cached reference data, a retry budget, latency measured against a five-second target | Yes — every scenario's p95 under 5 s at 10 and 25 concurrent clients (`metrics/BENCHMARKS.md`) |
 | Reliability | Provider failure produces a safe fallback and a human handover rather than an error | Yes, tested |
 | Security | Identity from the verified token only; least-privilege data sharing; security-sensitive content never reaches the provider | Yes, tested |
-| Maintainability | One responsibility per component, documented interfaces, boundaries enforced in CI | Yes, enforced |
-| Testability | Components callable without a web framework; a mock provider exercises the full path with no key or cost | Yes |
+| Maintainability | One responsibility per component, documented interfaces, boundaries and a complexity limit enforced in CI | Yes — mean CC 2.4, every file MI grade A (`metrics/QUALITY.md`) |
+| Testability | Components callable without a web framework; a mock provider exercises the full path with no key or cost | Yes — 94% backend, 89% frontend line coverage (`metrics/COVERAGE.md`) |
 
 **The 10,000-user figure is a requirement, not an achievement.** The
-architecture permits horizontal scaling. Demonstrating that capacity requires
-load testing that has not been done, and this document should not be read as
-claiming otherwise.
+architecture permits horizontal scaling. One instance has been benchmarked;
+demonstrating the requirement needs a multi-instance load test that has not
+been done, and this document should not be read as claiming otherwise.
 
 ---
 
 ## 10. Known architectural debt
 
-Each of these is a deliberate Alpha decision with a known cost.
+Each of these is a deliberate decision with a known cost, carried into the
+final release.
 
 | Item | Consequence | Resolution |
 | --- | --- | --- |
@@ -399,9 +435,11 @@ Each of these is a deliberate Alpha decision with a known cost.
 | Worker runs on demand | No scheduled aggregation | Trigger from the queue |
 | Monitoring counters are per instance and not exported | No cluster view, no alerting, no tracing | Export to a monitoring backend |
 | Approved recommendations are not applied | The learning loop stops at human review | Deliberate for now; automating it needs its own decision |
-| Retry budget can exceed the latency target | A worst-case turn can take far longer than five seconds | Reduce the timeout and bound the total budget |
+| A hung provider still exceeds the latency target | Worst case about 13 s (was about 61 s at the Alpha, before the retry budget) | Stream the response, or reply "still working" and finish asynchronously |
 | Synchronous provider call holds a worker thread | Thread pool exhaustion under load | Convert the provider and service to async |
-| No handling for a member in distress | A service for veterans needs one before real use | Out of Alpha scope; must be designed before any real deployment |
+| Sign-in is CPU-bound by design (bcrypt) | p95 4.7 s at 25 concurrent sign-ins on 2 CPUs | Size instances for peak sign-in, not peak chat |
+| Recommender similarity is lexical | Related fields only meet through shared catalog words | Swap the vectoriser for embeddings behind the same interface (ADR 0006) |
+| No handling for a member in distress | A service for veterans needs one before real use | Out of scope for this course; must be designed before any real deployment |
 
 ---
 
@@ -411,7 +449,7 @@ Each of these is a deliberate Alpha decision with a known cost.
 balancer; PostgreSQL as the application database; a managed cache; a managed
 queue; the model provider reached over HTTPS. Scaling is adding instances.
 
-**Alpha.** One instance, PostgreSQL where available and a local SQLite file
+**As built.** One instance, PostgreSQL where available and a local SQLite file
 where not, in-process cache, database outbox, worker run on demand. Every
 difference is listed in section 10. `/api/v1/health` reports which database
 engine and which model provider are live, so a demonstration is never ambiguous
@@ -419,7 +457,9 @@ about what it is showing.
 
 CI runs the full test suite against a real PostgreSQL service on every push,
 so the supported data layer is exercised continuously even when local runs use
-the fallback.
+the fallback. Every green push to `main` produces a versioned release bundle —
+backend, built web client and documentation — as a build artifact
+(`CI_CD.md`).
 
 ---
 
@@ -442,9 +482,11 @@ the fallback.
 | Load Balancer / Entry Point | `app/main.py` middleware; instance id in health |
 | Existing personnel database | `LegacyMemberMaster` (synthetic) |
 | Managed AI Model Provider | `app/modules/ai_integration/providers/` |
+| Personalised insight from completed training | `app/modules/ai_integration/recommender.py`, `/api/v1/pathways/recommended` |
+| CI/CD pipeline | `.github/workflows/ci.yml` |
 
 Every component named in the specification exists in code. Section 10 states
-honestly which of them are implemented in barebones form.
+which of them are still implemented in simplified form.
 
 ---
 

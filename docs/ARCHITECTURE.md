@@ -1,4 +1,4 @@
-# Architecture — as built in the Alpha
+# Architecture — as built
 
 SkillBridge AI. Component names follow the System Design Specification.
 
@@ -47,6 +47,57 @@ flowchart TD
 Individual conversations never retrain or reconfigure the production AI.
 Patterns are aggregated, written as `PENDING_REVIEW`, and applied only after a
 person approves them.
+
+## Module dependency graph
+
+Generated from the actual `import` statements in `backend/app` by
+`scripts/generate_module_graph.py`, so it cannot drift from the code. CI fails
+if it is out of date; regenerate with `python scripts/generate_module_graph.py --write`.
+
+Read it as "depends on". The shape to look for: Conversation Management fans
+out to the components it orchestrates, nothing fans back into it, and Cache and
+Monitoring are leaves.
+
+<!-- BEGIN GENERATED MODULE GRAPH -->
+
+```mermaid
+graph LR
+    ai_integration["AI Integration"]
+    analytics["Learning Analytics Worker"]
+    api["API routers"]
+    cache["Cache"]
+    conversation["Conversation Management"]
+    customer_data["Customer Data Adapter"]
+    escalation["Escalation"]
+    feedback["Feedback"]
+    knowledge["Knowledge Base"]
+    monitoring["Monitoring"]
+    validation["Response Validation"]
+
+    api --> ai_integration
+    api --> analytics
+    api --> cache
+    api --> conversation
+    api --> customer_data
+    api --> escalation
+    api --> feedback
+    api --> monitoring
+    conversation --> ai_integration
+    conversation --> customer_data
+    conversation --> escalation
+    conversation --> knowledge
+    conversation --> monitoring
+    conversation --> validation
+    customer_data --> cache
+    knowledge --> cache
+    validation --> ai_integration
+```
+
+<!-- END GENERATED MODULE GRAPH -->
+
+The boundaries this graph must obey are enforced by
+`backend/tests/test_architecture_boundaries.py`. Changing one of those rules is
+an architecture decision and belongs in `docs/adr/`.
 
 ## One customer turn, step by step
 
@@ -154,7 +205,8 @@ deployment exercise, not an application change.
 ## Scaling notes
 
 Application instances are stateless: identity comes from a signed token, and
-all shared state is in PostgreSQL. The two Alpha exceptions are documented
+all shared state is in PostgreSQL. The two exceptions are documented
 rather than hidden — in-memory rate-limit counters move to the shared cache,
 and the outbox table becomes a managed queue. The 10,000 concurrent-user target
-is a load-testing task, not an architectural claim.
+is a load-testing task, not an architectural claim; one instance is
+benchmarked in CI (`metrics/BENCHMARKS.md`).

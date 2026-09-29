@@ -27,3 +27,4 @@ deleting it hides the reasoning.
 | [0003](0003-database-outbox-queue.md) | A database outbox stands in for the message queue | Accepted |
 | [0004](0004-deterministic-escalation.md) | Escalation is rule-based, not confidence-based | Accepted |
 | [0005](0005-local-database-fallback.md) | SQLite is a local fallback; PostgreSQL is the data layer | Accepted |
+| [0006](0006-local-pathway-recommender.md) | Pathway recommendations are computed locally, not by the model | Accepted |
