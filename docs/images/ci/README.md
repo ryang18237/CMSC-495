@@ -7,7 +7,7 @@ exactly this name so the document picks it up.
 | --- | --- |
 | `01-workflow-runs.png` | Actions → CI, the list of recent runs on `main`, all green |
 | `02-job-graph.png` | One run on `main`: backend and frontend → integration → delivery |
-| `03-backend-job.png` | Backend job, contract check and the pytest `passed` line expanded |
-| `04-integration-smoke-test.png` | Integration job, smoke-test step ending in `Smoke test passed.` |
+| `03-backend-job.png` | Backend job with the contract, architecture and complexity steps and the coverage summary |
+| `04-integration-smoke-test.png` | Integration job: `Smoke test passed.` and the benchmark table |
 | `05-delivery-artifact.png` | Run summary page: release table plus the `skillbridge-1.0.0-…` artifact |
 | `06-pull-request-checks.png` | A merged pull request showing "All checks have passed" |

@@ -7,16 +7,16 @@ latest commit.
 
 ```mermaid
 flowchart LR
-    push([push or pull request]) --> backend[Backend<br/>lint · types · contract · tests]
-    push --> frontend[Frontend<br/>lint · tests · build]
-    backend --> integration[Integration<br/>deploy to runner · smoke test]
+    push([push or pull request]) --> backend[Backend<br/>lint · types · contract · architecture · complexity · tests + coverage]
+    push --> frontend[Frontend<br/>lint · tests + coverage · build]
+    backend --> integration[Integration<br/>deploy to runner · smoke test · benchmark]
     frontend --> integration
     integration -->|main only| delivery[Delivery<br/>versioned release bundle]
 ```
 
 ## Jobs
 
-### 1. Backend — lint, types, contract, tests
+### 1. Backend — lint, types, contract, architecture, complexity, tests
 
 Runs against a real **PostgreSQL 16** service container, the same database the
 platform targets in production. SQLite is a local convenience only and never
@@ -28,8 +28,13 @@ used in CI.
 | `ruff format --check .` | Any file is not formatted |
 | `mypy app` | Any type error in application code |
 | `python scripts/export_openapi.py --check` | `docs/openapi.json` no longer matches the routes and schemas |
+| `python scripts/generate_module_graph.py --check` | The architecture diagram no longer matches the imports |
+| `python scripts/quality_report.py --max-cc 15` | Any function's cyclomatic complexity exceeds 15 |
 | `python -m app.bootstrap` | The schema cannot be applied or the synthetic data cannot be seeded |
-| `pytest -q` | Any backend test fails, including the API contract and architecture boundary tests |
+| `pytest --cov` | Any backend test fails — including the API contract and architecture boundary tests — or coverage drops below 90% |
+
+Coverage is summarised on the run page and the HTML report is uploaded as the
+`backend-coverage` artifact.
 
 ### 2. Frontend — lint, tests, build
 
@@ -37,10 +42,11 @@ used in CI.
 | --- | --- |
 | `npm ci` | The lockfile and `package.json` disagree |
 | `npm run lint` | ESLint finds a problem, including the Allman brace rule |
-| `npm test` | Any Vitest test fails |
+| `npm run test:coverage` | Any Vitest test fails, or coverage drops below 80% of lines or 75% of branches |
 | `npm run build` | The production build fails |
 
-The built client is uploaded as the `frontend-dist` artifact.
+The built client is uploaded as the `frontend-dist` artifact and the coverage
+report as `frontend-coverage`.
 
 ### 3. Integration — deploy to the runner and smoke test
 
@@ -62,7 +68,13 @@ over HTTP, exactly as a client would:
 10. The counsellor resolves the case
 
 The Learning Analytics Worker then runs once against the data the smoke test
-produced. If any step fails, the server log is printed.
+produced.
+
+Finally a second instance starts with the per-member message limit raised and
+[`scripts/benchmark.py`](../scripts/benchmark.py) measures six scenarios over
+HTTP — 200 requests each, 10 concurrent. The table is written to the run
+summary and uploaded as the `benchmark` artifact, and the job fails if any
+p95 exceeds five seconds. If any step fails, the server log is printed.
 
 ### 4. Delivery — versioned release bundle
 
@@ -98,8 +110,8 @@ name and route count.
 python run.py --check
 ```
 
-Runs every backend and frontend check above in the same order, plus the
-OpenAPI contract check.
+Runs every backend and frontend check above in the same order, including the
+contract, architecture and complexity checks.
 
 ---
 
@@ -124,13 +136,15 @@ then integration, then delivery.
 
 ### Backend job
 
-Expanded to show the contract check and the pytest total.
+Expanded to show the contract, architecture and complexity checks, and the
+coverage summary.
 
 ![Backend job](images/ci/03-backend-job.png)
 
 ### Integration smoke test
 
-The smoke-test step ending in `Smoke test passed.`
+The smoke-test step ending in `Smoke test passed.`, and the benchmark table
+on the run summary.
 
 ![Integration job](images/ci/04-integration-smoke-test.png)
 
