@@ -376,3 +376,11 @@ button.link {
 .record-upload { display: grid; gap: 4px; margin-top: 10px; font-size: 13px; }
 .record-review { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; }
 .record-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+.record-review .record-list li { justify-content: flex-start; }
+.record-review label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0;
+  font-weight: normal;
+}

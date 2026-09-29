@@ -250,8 +250,10 @@ export default function MyRecordPanel({ session, onChange })
                     type="checkbox"
                     checked={Boolean(chosen[index])}
                     onChange={() => setChosen({ ...chosen, [index]: !chosen[index] })}
-                  />{' '}
-                  {item.name} <span className="muted">&middot; {KIND_LABELS[item.kind]}</span>
+                  />
+                  <span>
+                    {item.name} <span className="muted">&middot; {KIND_LABELS[item.kind]}</span>
+                  </span>
                 </label>
               </li>
             ))}
