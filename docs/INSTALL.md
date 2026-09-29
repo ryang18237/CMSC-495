@@ -227,7 +227,11 @@ the schema and seeds data on startup; to do it explicitly, run
 ## 7. Troubleshooting
 
 **`[Errno 48] Address already in use`** (macOS), `Errno 98` (Linux) or
-`10048` (Windows) — a previous run still holds port 8000 or 5173.
+`10048` (Windows) — a previous run still holds port 8000 or 5173, usually
+because its terminal was closed without `Ctrl+C`. `run.py` now detects a
+leftover run of this project and stops it before starting, and closing the
+terminal shuts the servers down properly. If a *different* program holds the
+port, `run.py` names it and stops; free the port by hand:
 
 ```bash
 # macOS / Linux
