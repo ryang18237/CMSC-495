@@ -29,6 +29,7 @@ import os
 import platform
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import time
@@ -143,7 +144,15 @@ def ensure_backend_environment(force: bool = False) -> Path:
 
     if probe.returncode != 0 or recorded != current:
         subprocess.run(
-            [str(python), "-m", "pip", "install", "-r", str(BACKEND / "requirements-dev.txt")],
+            [
+                str(python),
+                "-m",
+                "pip",
+                "install",
+                "--quiet",
+                "-r",
+                str(BACKEND / "requirements-dev.txt"),
+            ],
             check=True,
         )
         try:
@@ -420,6 +429,170 @@ class Service:
                 pass
 
 
+# ---------------------------------------------------------------------------
+# Ports
+#
+# A previous run that was not shut down cleanly -- a terminal window closed, a
+# laptop put to sleep, a crash -- leaves its servers running in the background
+# because each one runs in its own process group. The next run then fails with
+# "Address already in use", and worse, the health check can succeed against the
+# *old* server, so the launcher reports the API as ready when it is not. Every
+# run therefore checks both ports first. A leftover from this project is
+# stopped; anything else is reported and left alone.
+# ---------------------------------------------------------------------------
+def _port_in_use(port: int) -> bool:
+    # Vite listens on "localhost", which is ::1 on recent macOS and Node, so
+    # both address families are tried.
+    for family, host in ((socket.AF_INET, "127.0.0.1"), (socket.AF_INET6, "::1")):
+        try:
+            with socket.socket(family, socket.SOCK_STREAM) as probe:
+                probe.settimeout(0.5)
+                if probe.connect_ex((host, port)) == 0:
+                    return True
+        except OSError:
+            continue
+    return False
+
+
+def _listening_pids(port: int) -> list[int]:
+    pids: set[int] = set()
+    try:
+        if IS_WINDOWS:
+            output = subprocess.run(
+                ["netstat", "-ano"], capture_output=True, text=True, timeout=10
+            ).stdout
+            for line in output.splitlines():
+                parts = line.split()
+                if (
+                    len(parts) >= 5
+                    and parts[0].upper() == "TCP"
+                    and parts[1].endswith(f":{port}")
+                    and parts[3].upper() == "LISTENING"
+                    and parts[4].isdigit()
+                ):
+                    pids.add(int(parts[4]))
+        else:
+            lsof = shutil.which("lsof")
+            if lsof is None:
+                return []
+            output = subprocess.run(
+                [lsof, "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-t"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            ).stdout
+            pids.update(int(pid) for pid in output.split() if pid.isdigit())
+    except (OSError, subprocess.SubprocessError):
+        return []
+    pids.discard(os.getpid())
+    return sorted(pids)
+
+
+def _command_line(pid: int) -> str:
+    try:
+        if IS_WINDOWS:
+            query = f"(Get-CimInstance Win32_Process -Filter 'ProcessId={pid}').CommandLine"
+            result = subprocess.run(
+                ["powershell", "-NoProfile", "-Command", query],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+        else:
+            result = subprocess.run(
+                ["ps", "-o", "command=", "-p", str(pid)], capture_output=True, text=True, timeout=10
+            )
+        return result.stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def _working_directory(pid: int) -> str:
+    """Where the process was started. POSIX only; Windows relies on the command line."""
+    lsof = shutil.which("lsof")
+    if IS_WINDOWS or lsof is None:
+        return ""
+    try:
+        output = subprocess.run(
+            [lsof, "-a", "-p", str(pid), "-d", "cwd", "-Fn"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return next((line[1:] for line in output.splitlines() if line.startswith("n")), "")
+
+
+def _is_ours(pid: int, command: str) -> bool:
+    """A server this project started: our paths, our API module, or run from our folder."""
+    lowered = command.lower()
+    if str(ROOT).lower() in lowered or "app.main:app" in lowered:
+        return True
+    cwd = _working_directory(pid)
+    return bool(cwd) and Path(cwd).resolve().is_relative_to(ROOT)
+
+
+def _stop_pid(pid: int) -> None:
+    try:
+        if IS_WINDOWS:
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True)
+        else:
+            os.kill(pid, signal.SIGTERM)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def free_port(port: int, what: str) -> bool:
+    """Make sure `port` is free, stopping a leftover run of this project if needed."""
+    if not _port_in_use(port):
+        return True
+
+    kill_hint = (
+        f"netstat -ano | findstr :{port}   then   taskkill /PID <pid> /F"
+        if IS_WINDOWS
+        else f"lsof -ti :{port} | xargs kill -9"
+    )
+    pids = _listening_pids(port)
+    if not pids:
+        fail(f"Port {port}, needed for the {what}, is already in use.")
+        info(f"Free it with:  {kill_hint}")
+        return False
+
+    commands = {pid: _command_line(pid) for pid in pids}
+    if not any(_is_ours(pid, command) for pid, command in commands.items()):
+        pid, command = next(iter(commands.items()))
+        fail(f"Port {port}, needed for the {what}, is in use by another program (pid {pid}).")
+        if command:
+            info(f"It is: {command[:100]}")
+        info(f"Close that program, or free the port with:  {kill_hint}")
+        return False
+
+    step(f"Stopping a previous run that is still holding port {port}")
+    info("(usually a terminal that was closed without Ctrl+C)")
+    for pid in pids:
+        _stop_pid(pid)
+
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        if not _port_in_use(port):
+            return True
+        time.sleep(0.3)
+
+    if not IS_WINDOWS:
+        for pid in _listening_pids(port):
+            try:
+                os.kill(pid, FORCE_SIGNAL)
+            except OSError:
+                pass
+        time.sleep(1)
+    if _port_in_use(port):
+        fail(f"Could not free port {port}.")
+        info(f"Free it with:  {kill_hint}")
+        return False
+    return True
+
+
 def wait_for(url: str, timeout: int = 60) -> bool:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -485,6 +658,11 @@ def serve(python: Path, env: dict[str, str], label: str, args: argparse.Namespac
     npm = npm_command()
 
     try:
+        if not free_port(API_PORT, "API"):
+            return 1
+        if not args.api_only and npm is not None and not free_port(WEB_PORT, "web client"):
+            return 1
+
         step("Starting the API")
         services.append(
             Service(
@@ -505,7 +683,9 @@ def serve(python: Path, env: dict[str, str], label: str, args: argparse.Namespac
             )
         )
 
-        if not wait_for(f"{API_URL}/api/v1/health"):
+        api_started = wait_for(f"{API_URL}/api/v1/health")
+        # A health response only counts if it came from the process just started.
+        if not api_started or services[-1].process.poll() is not None:
             fail("The API did not start. The error should be printed above.")
             return 1
         info(f"API ready at {API_URL} (interactive docs at {API_URL}/docs)")
@@ -520,7 +700,10 @@ def serve(python: Path, env: dict[str, str], label: str, args: argparse.Namespac
         if serve_web:
             ensure_frontend_environment(npm, force=args.reinstall)  # type: ignore[arg-type]
             step("Starting the web client")
-            services.append(Service("web", [npm, "run", "dev"], FRONTEND, env))  # type: ignore[list-item]
+            # --strictPort: fail loudly rather than drift to 5174 while the
+            # browser is sent to 5173.
+            web_command = [npm, "run", "dev", "--", "--strictPort"]
+            services.append(Service("web", web_command, FRONTEND, env))  # type: ignore[list-item]
             if not wait_for(WEB_URL):
                 fail("The web client did not start. The error should be printed above.")
                 return 1
@@ -560,14 +743,15 @@ def _print_banner(target: str, label: str, serve_web: bool) -> None:
     if serve_web:
         print(f"  Web client     {WEB_URL}")
     print()
-    print("  Sign in with one of the seeded demo accounts:")
-    print(f"    customer@example.com   {DEMO_PASSWORD}   (support chat)")
-    print(f"    agent@example.com      {DEMO_PASSWORD}   (escalation queue)")
+    print("  Click 'Continue as a member' or 'Continue as a counsellor'.")
+    print("  Or sign in by hand:")
+    print(f"    member@example.com      {DEMO_PASSWORD}   (member chat)")
+    print(f"    counselor@example.com   {DEMO_PASSWORD}   (counsellor dashboard)")
     print()
     print("  In the chat, try:")
-    print('    "Why was I charged twice for my order?"   -> answered')
-    print('    "I want to speak to a human"              -> escalated to an agent')
-    print('    "What is the capital of France?"          -> unsupported topic')
+    print('    "Which certification should I work toward next?"   -> answered')
+    print('    "I want to speak to a human please"                -> handed to a counsellor')
+    print('    "What is the capital of France?"                   -> unsupported topic')
     print()
     print("  Press Ctrl+C to stop.")
     print(_paint(line, "1;32"))
@@ -582,7 +766,9 @@ def _install_signal_handlers() -> None:
 
     A process started in the background by a shell inherits SIGINT as ignored,
     so the default handler is restored explicitly. SIGTERM is translated into
-    SystemExit so the cleanup in `serve()` runs when a terminal is closed.
+    SystemExit so the cleanup in `serve()` runs on a kill, and SIGHUP -- what a
+    terminal window sends when it is closed -- is handled the same way, so
+    closing the window no longer leaves the servers running in the background.
     """
     try:
         signal.signal(signal.SIGINT, signal.default_int_handler)
@@ -592,15 +778,19 @@ def _install_signal_handlers() -> None:
     def _terminate(_signum: int, _frame: object) -> None:
         raise SystemExit(0)
 
-    try:
-        signal.signal(signal.SIGTERM, _terminate)
-    except (ValueError, OSError):
-        pass
+    for name in ("SIGTERM", "SIGHUP"):
+        sig = getattr(signal, name, None)  # SIGHUP does not exist on Windows
+        if sig is None:
+            continue
+        try:
+            signal.signal(sig, _terminate)
+        except (ValueError, OSError):
+            pass
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Start the AI-Powered Customer Service Platform locally.",
+        description="Start SkillBridge AI locally.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--check", action="store_true", help="run every check CI runs, then exit")
