@@ -1,7 +1,7 @@
 {
   "name": "csp-frontend",
   "private": true,
-  "version": "0.1.0-alpha",
+  "version": "1.0.0",
   "type": "module",
   "description": "Customer web application and human agent dashboard for the AI-Powered Customer Service Platform.",
   "scripts": {
