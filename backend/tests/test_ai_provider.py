@@ -18,7 +18,13 @@ from app.modules.ai_integration.providers.anthropic_provider import (
     AnthropicProvider,
     reset_shared_client,
 )
-from app.modules.ai_integration.service import AIIntegrationService, build_provider
+from app.modules.ai_integration.service import (
+    ERROR_DETAIL_LIMIT,
+    AIIntegrationService,
+    build_provider,
+)
+from app.modules.validation.service import ResponseValidationService
+from app.schemas import EscalationReason
 
 PROMPT = Prompt(
     system="You are the customer service assistant.",
@@ -165,14 +171,25 @@ def test_non_json_body_is_retryable():
     assert caught.value.retryable is True
 
 
-def test_truncated_response_never_reaches_the_customer():
-    """A reply cut off at the token limit is a failure, not an answer."""
-    with pytest.raises(AIProviderError) as caught:
-        _provider_with(200, _answer("The refund process begins when", "max_tokens")).generate(
-            PROMPT
-        )
-    assert caught.value.retryable is False
-    assert "truncated" in str(caught.value).lower()
+def test_truncated_response_is_returned_flagged_not_raised():
+    """The provider worked; the answer is incomplete. That is a validation
+    problem, not a service failure (peer review, section 4)."""
+    response = _provider_with(
+        200, _answer("The refund process begins when", "max_tokens")
+    ).generate(PROMPT)
+    assert response.stop_reason == "max_tokens"
+
+
+def test_truncated_response_never_reaches_the_member():
+    result = AIIntegrationService(
+        _provider_with(200, _answer("Start with Security+ because", "max_tokens"))
+    ).generate_response(_chat_context())
+    assert result.truncated is True
+
+    validation = ResponseValidationService().validate_response(result)
+    decision = ResponseValidationService().requires_escalation(result, validation)
+    assert not validation.valid
+    assert decision.reason is EscalationReason.VALIDATION_FAILURE
 
 
 # ---------------------------------------------------------------------------
@@ -263,3 +280,90 @@ def _chat_context():
         inquiry_type="ORDER",
         customer_message="Where is my order?",
     )
+
+
+# ---------------------------------------------------------------------------
+# Peer review follow-ups
+# ---------------------------------------------------------------------------
+def test_no_retry_is_started_once_the_budget_is_spent(monkeypatch):
+    """A slow first failure is not followed by a second slow attempt."""
+    calls = {"count": 0}
+    clock = {"now": 1000.0}
+
+    def handler(request):
+        calls["count"] += 1
+        clock["now"] += get_settings().ai_retry_budget_seconds + 0.5  # a slow 503
+        return httpx.Response(503, json={})
+
+    from app.modules.ai_integration import service as service_module
+
+    monkeypatch.setattr(service_module.time, "monotonic", lambda: clock["now"])
+    monkeypatch.setattr(service_module.time, "sleep", lambda seconds: None)
+    monkeypatch.setattr(get_settings(), "ai_max_retries", 3)
+
+    result = AIIntegrationService(_provider_returning(handler)).generate_response(_chat_context())
+
+    assert calls["count"] == 1
+    assert result.outcome.value == "PROVIDER_FAILURE"
+
+
+def test_fast_failures_are_still_retried_inside_the_budget(monkeypatch):
+    calls = {"count": 0}
+
+    def handler(request):
+        calls["count"] += 1
+        return httpx.Response(429, json={})
+
+    from app.modules.ai_integration import service as service_module
+
+    monkeypatch.setattr(service_module.time, "sleep", lambda seconds: None)
+    AIIntegrationService(_provider_returning(handler)).generate_response(_chat_context())
+    assert calls["count"] == get_settings().ai_max_retries + 1
+
+
+def test_worst_case_turn_is_bounded_by_budget_plus_one_timeout():
+    settings = get_settings()
+    worst = settings.ai_retry_budget_seconds + 1.0 + settings.ai_timeout_seconds
+    # The response target is about five seconds. The worst case cannot meet it
+    # -- a provider that hangs cannot be made fast -- but it is now bounded to
+    # the same order of magnitude instead of a minute.
+    assert worst <= 15.0
+
+
+def test_error_detail_is_capped():
+    class Loud(AnthropicProvider):
+        def generate(self, prompt):
+            raise AIProviderError("x" * 5000, retryable=False)
+
+    result = AIIntegrationService(Loud()).generate_response(_chat_context())
+    assert result.error_detail is not None
+    assert len(result.error_detail) == ERROR_DETAIL_LIMIT
+
+
+def test_api_key_never_appears_in_logs_or_errors(caplog):
+    """The repository is shared; the key must not leak through a log line."""
+    key = get_settings().anthropic_api_key
+
+    def handler(request):
+        assert request.headers["x-api-key"] == key  # sent where it belongs
+        return httpx.Response(401, json={"error": {"message": f"bad key {key}"}})
+
+    caplog.set_level("DEBUG")
+    result = AIIntegrationService(_provider_returning(handler)).generate_response(_chat_context())
+
+    assert key not in caplog.text
+    assert key not in (result.error_detail or "")
+    assert key not in result.text
+
+
+def test_shared_pool_is_closed_on_shutdown():
+    from fastapi.testclient import TestClient
+
+    from app.main import create_app
+    from app.modules.ai_integration.providers import anthropic_provider
+
+    with TestClient(create_app()):
+        anthropic_provider._shared_http_client(5.0)
+        assert anthropic_provider._shared_client is not None
+
+    assert anthropic_provider._shared_client is None

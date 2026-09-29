@@ -58,6 +58,10 @@ class AIResult:
     sources: list[str] = field(default_factory=list)
     latency_ms: int = 0
     error_detail: str | None = None
+    # The provider stopped at its token limit, so the text ends mid-thought.
+    # Response Validation rejects it as VALIDATION_FAILURE: the service worked,
+    # the answer is what failed.
+    truncated: bool = False
 
     @property
     def succeeded(self) -> bool:

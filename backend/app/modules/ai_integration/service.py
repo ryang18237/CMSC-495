@@ -42,6 +42,18 @@ SYSTEM_INSTRUCTION = (
 )
 
 
+# Long enough for a failure class and an HTTP status; too short to carry a
+# meaningful excerpt of member content if a provider ever included one.
+ERROR_DETAIL_LIMIT = 200
+
+
+def shutdown() -> None:
+    """Release resources held across requests. Called once, at application shutdown."""
+    from app.modules.ai_integration.providers.anthropic_provider import reset_shared_client
+
+    reset_shared_client()
+
+
 def build_provider(name: str | None = None) -> AIProvider:
     """Provider factory. Selection is configuration, not code."""
     selected = (name or get_settings().ai_provider).strip().lower()
@@ -98,6 +110,10 @@ class AIIntegrationService:
                 last_error = exc
                 if not exc.retryable or attempt == settings.ai_max_retries:
                     break
+                # A retry that starts after the budget can only finish after the
+                # member has already waited too long. Hand them to a person now.
+                if time.monotonic() - started >= settings.ai_retry_budget_seconds:
+                    break
                 time.sleep(min(0.2 * (2**attempt), 1.0))
                 continue
             except NotImplementedError as exc:
@@ -116,6 +132,7 @@ class AIIntegrationService:
                 model=provider_response.model,
                 sources=sources,
                 latency_ms=elapsed_ms,
+                truncated=provider_response.stop_reason == "max_tokens",
             )
 
         return self.handle_provider_failure(
@@ -128,6 +145,11 @@ class AIIntegrationService:
 
         Provider error text is kept in `error_detail` for server-side logging and
         is never returned to the customer.
+
+        Invariant: `error_detail` is the failure class and HTTP status, never
+        content. Today's providers only raise such messages, but a future one
+        that quoted a response excerpt would write member data into the log, so
+        the length is capped here where every provider passes through.
         """
         return AIResult(
             outcome=AIOutcome.PROVIDER_FAILURE,
@@ -135,5 +157,5 @@ class AIIntegrationService:
             model=self._provider.name,
             sources=[],
             latency_ms=latency_ms,
-            error_detail=str(error),
+            error_detail=str(error)[:ERROR_DETAIL_LIMIT],
         )

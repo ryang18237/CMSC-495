@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.bootstrap import CUSTOMER_ID
+from app.config import get_settings
 from app.modules.ai_integration.contracts import (
     AIOutcome,
     AIProviderError,
@@ -208,7 +209,7 @@ def test_retryable_failure_is_retried_then_falls_back() -> None:
     provider = _AlwaysFailingProvider()
     result = AIIntegrationService(provider).generate_response(_context())
 
-    assert provider.calls == 3  # initial attempt plus two retries
+    assert provider.calls == get_settings().ai_max_retries + 1  # first attempt plus retries
     assert result.outcome is AIOutcome.PROVIDER_FAILURE
     assert "upstream down" not in result.text
     assert result.error_detail == "upstream down"

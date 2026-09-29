@@ -39,6 +39,20 @@ Adapter has applied its per-inquiry permission list.
    of having enrolled or applied anyone, no guarantees of jobs, places or
    funding.
 
+### What leaves the platform
+
+Exactly four things, and nothing else — the request body is asserted by a test
+to contain only `model`, `max_tokens`, `system` and `messages`:
+
+1. The system instruction (how to answer, what not to claim, when to decline).
+2. The account facts the inquiry type is permitted to see — for example a
+   `CREDENTIAL` question sends specialty, completed training and credentials
+   held, and never the branch, pay grade or separation date.
+3. Up to two knowledge base excerpts, each cut to 700 characters.
+4. The last six turns of this conversation and the new message.
+
+No member name, email, member number or identifier is ever included.
+
 ### Choosing a provider
 
 Configuration only, never code:
@@ -59,26 +73,57 @@ With `anthropic` selected and no key, `/api/v1/health` reports `degraded` and
 every turn escalates. The platform keeps working; it just hands members to a
 person.
 
+**Model version.** `claude-sonnet-4-5` is an alias that moves as the provider
+releases updates. For a reproducible demonstration, set `ANTHROPIC_MODEL` to a
+dated model identifier and record which one was used.
+
+**Keys and cost.** Each team member uses their own key in their own
+git-ignored `backend/.env`; nobody commits one and CI never has one. A key is
+read once at startup, so a rotated key takes effect after a restart. A `429`
+from the provider means the key's rate limit was hit; it is retried once inside
+the budget below and otherwise hands the member to a counsellor.
+
 ### Failure handling
 
 Every provider fault is raised as `AIProviderError` with a `retryable` flag.
 The provider never retries itself — `AIIntegrationService` owns one bounded
-retry loop (`AI_MAX_RETRIES`, default 2, exponential backoff capped at one
-second), so a retry cannot multiply.
+retry loop, so a retry cannot multiply.
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `AI_TIMEOUT_SECONDS` | 8 | Longest a single attempt may take |
+| `AI_MAX_RETRIES` | 1 | Retries after the first attempt, for retryable failures only |
+| `AI_RETRY_BUDGET_SECONDS` | 5 | No retry is *started* once the turn has used this much time |
+
+The worst case is therefore about 5 + 8 ≈ 13 seconds before a member is handed
+to a person. The Alpha defaults — 20-second timeout, two retries — allowed
+about 61 seconds, against a five-second response target; the peer review
+rated that High and these values resolve it.
 
 | Situation | Retryable | Member sees |
 | --- | --- | --- |
 | Timeout, transport error, 429, 5xx, non-JSON or empty body | Yes | A fallback message and a handover, if retries run out |
 | 401/403 (bad key), 400, 404, 413 | No | Handover immediately |
-| Response cut off at the token limit | No | Handover — never half a sentence |
+| Response cut off at the token limit | — | Returned flagged as truncated; Response Validation rejects it as `VALIDATION_FAILURE` and hands over — never half a sentence |
 | Model declines (`UNSUPPORTED_TOPIC`, however it is decorated) | — | `UNSUPPORTED_TOPIC` escalation |
 
 Provider error text never reaches the member. Prompt and response bodies are
-never logged; errors record only the failure class and HTTP status.
+never logged; errors record only the failure class and HTTP status, and the
+stored `error_detail` is capped at 200 characters so a future provider that
+quoted content in an error still could not write member data to the log. A test
+drives a rejected-key call and asserts the key appears in no log line, error or
+member-facing text.
+
+Truncation used to be raised as a provider failure, which escalated as
+`AI_SERVICE_FAILURE` and pointed the analytics worker at provider timeouts
+that were never the cause. It is now a validation failure, which is what it
+is. `MAX_TOKENS` (1,024) and `max_response_length` (4,000 characters) are
+coupled, and both sites say so.
 
 One HTTP connection pool is shared across requests. It is created under a lock,
 because the sync routes run on a thread pool and two first requests arriving
-together would otherwise each build a pool and leak one.
+together would otherwise each build a pool and leak one. It is closed when the
+application shuts down.
 
 ---
 
@@ -150,11 +195,32 @@ Tuning decisions were made by reading these rankings, not by guessing:
 
 ---
 
+## Peer review — what changed
+
+Items from `docs/PEER_REVIEW_AI_Integration_Module.md` and the Unit 5
+refinement report, and where each stands.
+
+| Finding | Severity | Resolution |
+| --- | --- | --- |
+| Worst-case turn ≈ 61 s against a 5 s target | High | Timeout 8 s, one retry, 5 s retry budget; worst case ≈ 13 s |
+| `error_detail` could carry content into logs | Medium | Capped at 200 characters; invariant documented on the field |
+| Truncation reported as `AI_SERVICE_FAILURE` | Medium | Now `VALIDATION_FAILURE`, with no change to the approved enumeration |
+| Handoff doc described a stub | Medium | Replaced by this document |
+| What reaches the provider not stated in one place | Medium | "What leaves the platform", above |
+| Model alias, key rotation, rate limits undocumented | Medium / Low | Documented above |
+| No test that the key never reaches a log | Low | Added |
+| `MAX_TOKENS` silently coupled to `max_response_length` | Low | Commented at both sites |
+| Shared pool never closed | Low | Closed on shutdown |
+| Shared pool created without a lock | Refinement report | Lock added; a 20-thread test fails without it |
+| Synchronous provider call holds a worker thread | Medium | **Open.** Needs async routes across the API layer; recorded as architectural debt |
+
+---
+
 ## Tests
 
 | File | Covers |
 | --- | --- |
-| `tests/test_ai_provider.py` | Request shape, status mapping, retry flags, parsing, truncation, decline-marker normalisation, provider selection |
+| `tests/test_ai_provider.py` | Request shape, status mapping, retry flags, retry budget, parsing, truncation as a validation failure, decline-marker normalisation, capped error detail, key never logged, pool closed on shutdown |
 | `tests/test_modules.py` | Retry policy, fallback and escalation on provider failure |
 | `tests/test_recommender.py` | Tokenising, ranking, held-credential filtering, explanations, cold start, catalog integrity, offline evaluation, the HTTP route, and the shared-pool lock under 20 concurrent threads |
 | `frontend/src/components/PathwayRecommendations.test.jsx` | Reasons and strengths rendered, general fallback, error code shown |

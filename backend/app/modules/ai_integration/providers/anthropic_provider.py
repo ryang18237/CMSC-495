@@ -39,6 +39,9 @@ from app.modules.ai_integration.contracts import AIProviderError, Prompt, Provid
 from app.modules.ai_integration.providers.base import AIProvider
 
 ANTHROPIC_VERSION = "2023-06-01"
+# About 4,000 characters of English, which is also `max_response_length` in
+# config.py. The two are coupled: raising this without raising that produces
+# answers Response Validation rejects as too long. Change them together.
 MAX_TOKENS = 1024
 UNSUPPORTED_MARKER = "UNSUPPORTED_TOPIC"
 
@@ -197,19 +200,13 @@ class AnthropicProvider(AIProvider):
         if not text:
             raise AIProviderError("Provider returned an empty response.", retryable=True)
 
-        # A response cut off at the token limit ends mid-sentence. It would
-        # otherwise pass response validation and reach the customer truncated,
-        # so it is treated as a failure and handed to a human instead.
-        #
-        # FOLLOW-UP: this currently surfaces to the customer as
-        # AI_SERVICE_FAILURE, which is not strictly accurate. A dedicated
-        # escalation reason (or reusing VALIDATION_FAILURE) would describe it
-        # better, but that changes the approved enumeration in the interface
-        # contract, so it belongs in a separate change with Ryan.
-        if stop_reason == "max_tokens":
-            raise AIProviderError(
-                f"Provider response was truncated at {MAX_TOKENS} tokens.", retryable=False
-            )
+        # A response cut off at the token limit ends mid-sentence. It is
+        # returned with stop_reason "max_tokens" rather than raised: the
+        # provider worked, the answer is incomplete. The service marks the
+        # result truncated and Response Validation rejects it as
+        # VALIDATION_FAILURE, so the member is handed to a counsellor and the
+        # analytics worker is not sent to investigate provider timeouts that
+        # were never the problem (peer review, section 4).
 
         return ProviderResponse(
             text=self._normalise_marker(text),

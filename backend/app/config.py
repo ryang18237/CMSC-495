@@ -73,8 +73,13 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-sonnet-4-5"
     anthropic_base_url: str = "https://api.anthropic.com"
-    ai_timeout_seconds: float = 20.0
-    ai_max_retries: int = 2
+    # Sized against the ~5 second response target (peer review, High). A
+    # retry is only started while the turn is still inside the retry budget,
+    # so the worst case is about budget + one timeout (~13 s), not
+    # (retries + 1) x timeout (the old 20 s x 3 = ~61 s).
+    ai_timeout_seconds: float = 8.0
+    ai_max_retries: int = 1
+    ai_retry_budget_seconds: float = 5.0
 
     # Cache (Data Layer). Alpha uses a process-local implementation; see
     # app/modules/cache/service.py for what a shared cache would change.
@@ -83,6 +88,8 @@ class Settings(BaseSettings):
 
     # Interface contract limits
     max_message_length: int = 2000
+    # Coupled to MAX_TOKENS in providers/anthropic_provider.py (~4 chars per
+    # token). Change the two together.
     max_response_length: int = 4000
     max_comment_length: int = 1000
     max_request_bytes: int = 65536

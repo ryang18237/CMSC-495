@@ -67,6 +67,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             )
     yield
 
+    # Release the AI provider's shared connection pool on an orderly shutdown
+    # (peer review, section 4). Goes through the module's entry point: nothing
+    # outside AI Integration may import a provider directly.
+    from app.modules.ai_integration.service import shutdown as shutdown_ai
+
+    shutdown_ai()
+
 
 # Groups shown in the interactive documentation at /docs, in this order.
 OPENAPI_TAGS = [
