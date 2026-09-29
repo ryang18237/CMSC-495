@@ -212,30 +212,54 @@ def _tidy(line: str) -> str:
     return _clean(line.strip(" -:|\t"))
 
 
+def _column(header: list[str], names: tuple[str, ...]) -> int | None:
+    return next((index for index, title in enumerate(header) if title in names), None)
+
+
+def _kind_hint(row: list[str], column: int | None) -> str | None:
+    if column is None or column >= len(row):
+        return None
+    value = row[column].strip().upper()
+    return "CREDENTIAL" if value.startswith(("CRED", "CERT", "LIC")) else "TRAINING"
+
+
 def _rows_from_csv(text: str) -> list[tuple[str, str | None]]:
     """(name, kind hint) from a CSV, using a header when there is a useful one."""
     rows = list(csv.reader(io.StringIO(text)))
     if not rows:
         return []
     header = [cell.strip().lower() for cell in rows[0]]
-    name_column = next(
-        (i for i, h in enumerate(header) if h in ("name", "title", "course", "credential")), None
-    )
-    kind_column = next((i for i, h in enumerate(header) if h in ("kind", "type", "category")), None)
+    name_column = _column(header, ("name", "title", "course", "credential"))
+    kind_column = _column(header, ("kind", "type", "category"))
 
     if name_column is None:
+        # No usable header: every non-empty cell is a candidate line.
         return [(cell, None) for row in rows for cell in row if cell.strip()]
 
-    out: list[tuple[str, str | None]] = []
-    for row in rows[1:]:
-        if name_column >= len(row) or not row[name_column].strip():
-            continue
-        hint = None
-        if kind_column is not None and kind_column < len(row):
-            value = row[kind_column].strip().upper()
-            hint = "CREDENTIAL" if value.startswith(("CRED", "CERT", "LIC")) else "TRAINING"
-        out.append((row[name_column], hint))
-    return out
+    return [
+        (row[name_column], _kind_hint(row, kind_column))
+        for row in rows[1:]
+        if name_column < len(row) and row[name_column].strip()
+    ]
+
+
+def _section_kind(raw: str) -> str | None:
+    """CREDENTIAL or TRAINING if the line is a section heading, else None."""
+    heading = _SECTION.match(raw)
+    if not heading:
+        return None
+    title = heading.group("title").lower()
+    return "CREDENTIAL" if title.startswith(("licen", "certif", "credential")) else "TRAINING"
+
+
+def _usable_name(raw: str) -> str | None:
+    """The tidied title, or None for noise, fragments and non-text lines."""
+    if _NOISE.match(raw.strip()):
+        return None
+    name = _tidy(raw)
+    if len(name) < 3 or len(name) > MAX_NAME_LENGTH or not re.search(r"[A-Za-z]", name):
+        return None
+    return name
 
 
 def extract_candidates(filename: str, content_base64: str) -> tuple[list[Candidate], int]:
@@ -264,34 +288,22 @@ def extract_candidates(filename: str, content_base64: str) -> tuple[list[Candida
     section: str | None = None
 
     for raw, hint in lines:
-        heading = _SECTION.match(raw)
+        heading = _section_kind(raw)
         if heading:
-            title = heading.group("title").lower()
-            section = (
-                "CREDENTIAL" if title.startswith(("licen", "certif", "credential")) else "TRAINING"
-            )
+            section = heading
+            continue
+        if not raw.strip():
             continue
 
-        if _NOISE.match(raw.strip()):
-            skipped += 1
-            continue
-        name = _tidy(raw)
-        if not name:
-            continue
-        if len(name) < 3 or len(name) > MAX_NAME_LENGTH or not re.search(r"[A-Za-z]", name):
+        name = _usable_name(raw)
+        kind = (hint or _classify(name, section)) if name else None
+        if name is None or kind is None:
             skipped += 1
             continue
 
-        kind = hint or _classify(name, section)
-        if kind is None:
-            skipped += 1
-            continue
-
-        key = (kind, name.lower())
-        if key in seen:
-            continue
-        seen.add(key)
-        found.append(Candidate(kind=kind, name=name))
+        if (kind, name.lower()) not in seen:
+            seen.add((kind, name.lower()))
+            found.append(Candidate(kind=kind, name=name))
         if len(found) >= MAX_ITEMS:
             break
 
