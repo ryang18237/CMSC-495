@@ -107,37 +107,41 @@ class OpenAIProvider(AIProvider):
             raise AIProviderError(f"Provider returned {status_code}.", retryable=True)
         raise AIProviderError(f"Provider returned {status_code}.", retryable=False)
 
+    @staticmethod
+    def _first_choice(payload: object) -> dict[str, object]:
+        choices = payload.get("choices") if isinstance(payload, dict) else None
+        if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+            raise AIProviderError("Provider response had no choices.", retryable=True)
+        return choices[0]
+
+    @staticmethod
+    def _text_of(choice: dict[str, object]) -> str:
+        raw_message = choice.get("message")
+        message: dict[str, object] = raw_message if isinstance(raw_message, dict) else {}
+        text = str(message.get("content") or "").strip()
+        # A refusal is the model declining, which is exactly what the
+        # UNSUPPORTED_TOPIC marker means to the rest of the platform.
+        if not text and message.get("refusal"):
+            return UNSUPPORTED_MARKER
+        if not text:
+            raise AIProviderError("Provider returned an empty response.", retryable=True)
+        if text.strip(_MARKER_TRIM).upper() == UNSUPPORTED_MARKER:
+            return UNSUPPORTED_MARKER
+        return text
+
     def _parse(self, response: httpx.Response) -> ProviderResponse:
         try:
             payload = response.json()
         except ValueError as exc:
             raise AIProviderError("Provider returned a non-JSON body.", retryable=True) from exc
 
-        choices = payload.get("choices") if isinstance(payload, dict) else None
-        if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
-            raise AIProviderError("Provider response had no choices.", retryable=True)
-
-        choice = choices[0]
-        raw_message = choice.get("message")
-        message: dict[str, object] = raw_message if isinstance(raw_message, dict) else {}
-        text = str(message.get("content") or "").strip()
-
-        # A refusal is the model declining, which is exactly what the
-        # UNSUPPORTED_TOPIC marker means to the rest of the platform.
-        if not text and message.get("refusal"):
-            text = UNSUPPORTED_MARKER
-        if not text:
-            raise AIProviderError("Provider returned an empty response.", retryable=True)
-
+        choice = self._first_choice(payload)
         finish = choice.get("finish_reason")
+        # OpenAI says "length" where Anthropic says "max_tokens"; the rest of the
+        # platform only knows the latter.
         stop_reason = "max_tokens" if finish == "length" else (str(finish) if finish else None)
-        if text.strip(_MARKER_TRIM).upper() == UNSUPPORTED_MARKER:
-            text = UNSUPPORTED_MARKER
-
         return ProviderResponse(
-            text=text,
-            model=str(payload.get("model") or self._model)
-            if isinstance(payload, dict)
-            else self._model,
+            text=self._text_of(choice),
+            model=str(payload.get("model") or self._model),
             stop_reason=stop_reason,
         )
