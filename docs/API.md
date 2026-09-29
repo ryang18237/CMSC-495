@@ -70,8 +70,8 @@ Send the token on every other call: `Authorization: Bearer <accessToken>`.
 | POST | `/api/v1/agent/cases/{caseId}/claim` | Take a case without replying yet (agent only) | 200 |
 | GET | `/api/v1/agent/cases/{caseId}/replies` | Counsellor replies on a case (agent only) | 200 |
 | GET | `/api/v1/agent/workload` | Open cases held by the signed-in counsellor (agent only) | 200 |
-| GET | `/api/v1/profile/record` | The member's service record and the items they added (member only) | 200 |
-| POST | `/api/v1/profile/record/items` | Add one training or credential item (member only) | 201 |
+| GET | `/api/v1/profile/record` | The member's service record, their profile and how complete it is (member only) | 200 |
+| POST | `/api/v1/profile/record/items` | Add one profile item (member only) | 201 |
 | POST | `/api/v1/profile/record/items/bulk` | Add confirmed items after an upload (member only) | 201 |
 | DELETE | `/api/v1/profile/record/items/{itemId}` | Remove an item the member added (member only) | 204 |
 | POST | `/api/v1/profile/record/import` | Read an uploaded .txt, .csv or .pdf and suggest items; saves nothing (member only) | 200 |
@@ -258,17 +258,27 @@ conversation. Updating an already-closed case returns **409**.
 
 ---
 
-## My record
+## My profile
 
 Member only (`CUSTOMER` role); a counsellor receives **403**. Everything acts
 on the signed-in member.
 
-The legacy personnel record is read-only and often incomplete — a
-certification earned after separation never reaches it. A member adds such
-items once. The Customer Data Adapter merges them with the service record, so
-**every later conversation** uses them under the same per-question permission
-rules; nobody re-enters anything per conversation. Editing the record takes
-effect on the next message.
+The legacy personnel record is read-only and holds military training only — a
+certification earned after separation, a degree, a civilian job never reach
+it. A member enters those once here. The Customer Data Adapter merges them
+with the service record, so **every later conversation** uses them under the
+same per-question permission rules; nobody restates anything per conversation.
+Editing the profile takes effect on the next message.
+
+| `kind` | Covers |
+| --- | --- |
+| `CREDENTIAL` | A certification or license |
+| `TRAINING` | A course, school or military qualification |
+| `EDUCATION` | A degree, diploma or coursework |
+| `EXPERIENCE` | A job or role, military or civilian |
+
+Each item is a `name`, plus an optional `organization` (issuer, school or
+employer) and an optional `detail`. Only `name` is required.
 
 ### GET /api/v1/profile/record → 200
 
@@ -283,31 +293,38 @@ effect on the next message.
   "added": [
     {
       "itemId": "3f0c9a52-8c1e-4b7a-9d2e-1a6f5b0c7d11",
-      "kind": "CREDENTIAL",
-      "name": "CompTIA Security+",
+      "kind": "EDUCATION",
+      "name": "Bachelor of Science in Information Technology",
+      "organization": "Western Governors University",
+      "detail": "Expected 2027",
       "source": "MANUAL",
       "addedAt": "2026-09-29T02:10:00Z"
     }
-  ]
+  ],
+  "completeness": { "percent": 40, "missingKinds": ["TRAINING", "EXPERIENCE"] }
 }
 ```
 
 `serviceRecord` is `null` when the member has no personnel record; the items
-they add are still used.
+they enter are still used.
+
+`completeness.percent` is a blunt score out of five equal parts — the service
+record, and one per kind — meant to show a member what is still worth adding,
+not to grade them. `missingKinds` lists the kinds with nothing in them yet.
 
 ### POST /api/v1/profile/record/items → 201
 
 ```json
-{ "kind": "CREDENTIAL", "name": "CompTIA Security+" }
+{ "kind": "EXPERIENCE", "name": "Help Desk Technician", "organization": "Fort Hood" }
 ```
 
-`kind` is `TRAINING` or `CREDENTIAL`. Whitespace is tidied. Returns the item.
+Whitespace is tidied; a blank optional field is stored as null. Returns the item.
 
 | HTTP | Code | When |
 | --- | --- | --- |
 | 409 | `RECORD_ITEM_EXISTS` | The same kind and name is already there (case-insensitive) |
-| 422 | `INVALID_RECORD_ITEM` | Unknown kind, or a name that is blank or over 200 characters |
-| 422 | `RECORD_ITEM_LIMIT` | The record already holds 100 items |
+| 422 | `INVALID_RECORD_ITEM` | Unknown kind; a name blank or over 200 characters; an organisation over 200; a detail over 500 |
+| 422 | `RECORD_ITEM_LIMIT` | The profile already holds 150 items |
 
 ### POST /api/v1/profile/record/import → 200
 
@@ -322,16 +339,19 @@ limit.
 ```json
 {
   "candidates": [
-    { "kind": "TRAINING", "name": "Network Administration Course" },
-    { "kind": "CREDENTIAL", "name": "Cisco CCNA" }
+    { "kind": "EDUCATION", "name": "Associate of Applied Science", "organization": "Central Texas College", "detail": null },
+    { "kind": "CREDENTIAL", "name": "Cisco CCNA", "organization": null, "detail": null }
   ],
   "skippedLines": 4
 }
 ```
 
-Lines are kept only when they read like a course or a credential, or sit under
-a heading such as *Certifications* or *Military Courses*. Dates, numbering,
-course codes and page furniture are removed. The member reviews the list.
+A whole resume or transcript can go in at once. Lines are kept only when they
+read like one of the four kinds, or sit under a heading such as
+*Certifications*, *Education* or *Work Experience*. `Title — Organisation`,
+`Title at Employer` and `Title, School` are split into the two fields. Dates,
+numbering, course codes, contact details and page furniture are removed. The
+member reviews the list before anything is saved.
 
 | HTTP | Code | When |
 | --- | --- | --- |
@@ -345,16 +365,16 @@ Saves the items the member confirmed. Items already on the record are counted,
 not treated as errors.
 
 ```json
-{ "items": [ { "kind": "CREDENTIAL", "name": "Cisco CCNA" } ] }
+{ "items": [ { "kind": "CREDENTIAL", "name": "Cisco CCNA", "organization": null } ] }
 ```
 
 ```json
-{ "added": [ { "itemId": "…", "kind": "CREDENTIAL", "name": "Cisco CCNA", "source": "UPLOAD", "addedAt": "…" } ], "alreadyOnRecord": 0 }
+{ "added": [ { "itemId": "…", "kind": "CREDENTIAL", "name": "Cisco CCNA", "organization": null, "detail": null, "source": "UPLOAD", "addedAt": "…" } ], "alreadyOnRecord": 0 }
 ```
 
 ### DELETE /api/v1/profile/record/items/{itemId} → 204
 
-Removes an item the member added. Service-record items cannot be removed.
+Removes an item the member entered. Service-record items cannot be removed.
 Another member's item id returns **404** `RECORD_ITEM_NOT_FOUND`, so ids
 cannot be probed.
 

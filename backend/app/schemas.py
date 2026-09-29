@@ -266,8 +266,10 @@ class AnalyticsRunResponse(ApiModel):
 # My record -- /api/v1/profile/record (member-facing)
 # --------------------------------------------------------------------------
 class RecordItemKind(str, Enum):
-    TRAINING = "TRAINING"
     CREDENTIAL = "CREDENTIAL"
+    TRAINING = "TRAINING"
+    EDUCATION = "EDUCATION"
+    EXPERIENCE = "EXPERIENCE"
 
 
 class RecordItemSource(str, Enum):
@@ -280,6 +282,10 @@ class RecordItemRequest(ApiModel):
     # one documented code (422 INVALID_RECORD_ITEM) rather than two.
     kind: str
     name: str
+    # Issuer, school or employer, and anything else worth keeping. Both
+    # optional: a profile filled in a little at a time is still useful.
+    organization: str | None = None
+    detail: str | None = None
 
 
 class RecordItemsRequest(ApiModel):
@@ -290,6 +296,8 @@ class MemberRecordItemView(ApiModel):
     item_id: uuid.UUID
     kind: RecordItemKind
     name: str
+    organization: str | None = None
+    detail: str | None = None
     source: RecordItemSource
     added_at: datetime
 
@@ -301,11 +309,21 @@ class ServiceRecordSummary(ApiModel):
     credentials: list[str]
 
 
+class ProfileCompleteness(ApiModel):
+    # 0-100. Four kinds, each worth the same, plus the service record.
+    percent: int
+    # Kinds with nothing in them yet, in the order worth filling.
+    missing_kinds: list[RecordItemKind]
+
+
 class MemberRecordResponse(ApiModel):
     # What the personnel system holds -- read-only, null if there is no record.
     service_record: ServiceRecordSummary | None
-    # What the member added. Used in every conversation alongside the above.
+    # The member's own profile. Used in every conversation alongside the above.
     added: list[MemberRecordItemView]
+    # How complete the profile looks, so the client can prompt for what is
+    # missing rather than leaving the member guessing.
+    completeness: ProfileCompleteness
 
 
 class RecordItemsAddedResponse(ApiModel):
@@ -321,6 +339,8 @@ class RecordImportRequest(ApiModel):
 class RecordCandidate(ApiModel):
     kind: RecordItemKind
     name: str
+    organization: str | None = None
+    detail: str | None = None
 
 
 class RecordImportResponse(ApiModel):

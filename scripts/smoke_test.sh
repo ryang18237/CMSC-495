@@ -23,15 +23,15 @@ CONVERSATION_ID=$(curl -sf -X POST "$BASE/api/v1/conversations" \
   -H "Authorization: Bearer $CUSTOMER_TOKEN" | json "['conversationId']")
 echo "conversation $CONVERSATION_ID"
 
-step "Member saves a credential to My record"
+step "Member saves a job to My profile"
 # 201 the first time; 409 on a re-run against the same database. Both are fine.
 STATUS=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/v1/profile/record/items" \
   -H "Authorization: Bearer $CUSTOMER_TOKEN" -H 'Content-Type: application/json' \
-  -d '{"kind":"CREDENTIAL","name":"CompTIA Security+"}')
+  -d '{"kind":"EXPERIENCE","name":"Help Desk Technician","organization":"Fort Hood"}')
 [ "$STATUS" = "201" ] || [ "$STATUS" = "409" ] || { echo "expected 201 or 409, got $STATUS"; exit 1; }
 curl -sf -H "Authorization: Bearer $CUSTOMER_TOKEN" "$BASE/api/v1/profile/record" \
-  | json "['added'][0]['name']" | grep -qx "CompTIA Security+"
-echo "saved to the member's record"
+  | json "['added'][0]['name']" | grep -qx "Help Desk Technician"
+echo "saved to the member's profile"
 
 step "Assistant answers a supported question"
 ANSWER=$(curl -sf -X POST "$BASE/api/v1/conversations/$CONVERSATION_ID/messages" \

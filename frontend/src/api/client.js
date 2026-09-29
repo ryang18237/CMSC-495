@@ -122,8 +122,12 @@ export const api = {
   // My record (member role only).
   getRecord: (token) => request('/api/v1/profile/record', { token }),
 
-  addRecordItem: (token, kind, name) =>
-    request('/api/v1/profile/record/items', { method: 'POST', token, body: { kind, name } }),
+  addRecordItem: (token, kind, name, organization, detail) =>
+    request('/api/v1/profile/record/items', {
+      method: 'POST',
+      token,
+      body: { kind, name, organization: organization || undefined, detail: detail || undefined },
+    }),
 
   addRecordItems: (token, items) =>
     request('/api/v1/profile/record/items/bulk', { method: 'POST', token, body: { items } }),

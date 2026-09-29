@@ -15,7 +15,16 @@ const RECORD = {
   },
   added: [
     { itemId: 'i1', kind: 'CREDENTIAL', name: 'CompTIA Security+', source: 'MANUAL', addedAt: 'x' },
+    {
+      itemId: 'i2',
+      kind: 'EDUCATION',
+      name: 'Associate of Applied Science',
+      organization: 'Central Texas College',
+      source: 'MANUAL',
+      addedAt: 'x',
+    },
   ],
+  completeness: { percent: 60, missingKinds: ['TRAINING', 'EXPERIENCE'] },
 }
 
 afterEach(() =>
@@ -35,19 +44,45 @@ describe('MyRecordPanel', () =>
     expect(screen.getByText('CompTIA Security+')).toBeInTheDocument()
   })
 
-  it('adds an item, reloads, and tells the parent', async () =>
+  it('groups items by kind and shows the organisation', async () =>
+  {
+    vi.spyOn(api, 'getRecord').mockResolvedValue(RECORD)
+    render(<MyRecordPanel session={session} />)
+
+    expect(await screen.findByRole('heading', { name: 'Education' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Credential' })).toBeInTheDocument()
+    expect(screen.getByText('Central Texas College', { exact: false })).toBeInTheDocument()
+  })
+
+  it('shows how complete the profile is and what is missing', async () =>
+  {
+    vi.spyOn(api, 'getRecord').mockResolvedValue(RECORD)
+    render(<MyRecordPanel session={session} />)
+
+    expect(await screen.findByText(/60% complete/)).toBeInTheDocument()
+    expect(screen.getByText(/add training, experience/)).toBeInTheDocument()
+    expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '60')
+  })
+
+  it('adds an item with its employer, reloads, and tells the parent', async () =>
   {
     vi.spyOn(api, 'getRecord').mockResolvedValue(RECORD)
     vi.spyOn(api, 'addRecordItem').mockResolvedValue({})
     const onChange = vi.fn()
     render(<MyRecordPanel session={session} onChange={onChange} />)
 
-    await userEvent.selectOptions(await screen.findByLabelText('Type'), 'TRAINING')
-    await userEvent.type(screen.getByLabelText('Name'), 'Lean Six Sigma Yellow Belt')
+    await userEvent.selectOptions(await screen.findByLabelText('Type'), 'EXPERIENCE')
+    await userEvent.type(screen.getByLabelText('Name'), 'Help Desk Technician')
+    await userEvent.type(screen.getByLabelText('Issuer, school or employer'), 'Fort Hood')
     await userEvent.click(screen.getByRole('button', { name: 'Add' }))
 
     await waitFor(() =>
-      expect(api.addRecordItem).toHaveBeenCalledWith('tok', 'TRAINING', 'Lean Six Sigma Yellow Belt'),
+      expect(api.addRecordItem).toHaveBeenCalledWith(
+        'tok',
+        'EXPERIENCE',
+        'Help Desk Technician',
+        'Fort Hood',
+      ),
     )
     await waitFor(() => expect(onChange).toHaveBeenCalled())
     expect(api.getRecord).toHaveBeenCalledTimes(2)
@@ -69,7 +104,7 @@ describe('MyRecordPanel', () =>
     vi.spyOn(api, 'importRecord').mockResolvedValue({
       candidates: [
         { kind: 'CREDENTIAL', name: 'Cisco CCNA' },
-        { kind: 'TRAINING', name: 'Basic Leader Course' },
+        { kind: 'EXPERIENCE', name: 'Basic Leader Course', organization: 'Fort Hood' },
       ],
       skippedLines: 2,
     })
@@ -77,7 +112,7 @@ describe('MyRecordPanel', () =>
     render(<MyRecordPanel session={session} />)
 
     const file = new File(['Cisco CCNA\nBasic Leader Course'], 'list.txt', { type: 'text/plain' })
-    await userEvent.upload(await screen.findByLabelText(/upload a list/i), file)
+    await userEvent.upload(await screen.findByLabelText(/upload a resume/i), file)
 
     expect(await screen.findByText('Cisco CCNA')).toBeInTheDocument()
     expect(api.importRecord).toHaveBeenCalledWith('tok', 'list.txt', expect.any(String))

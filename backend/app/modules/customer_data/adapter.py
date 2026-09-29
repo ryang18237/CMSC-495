@@ -59,18 +59,27 @@ _SPECIALTIES = {
 # Which parts of the record each kind of question is permitted to see. Anything
 # not listed here is withheld, so the default is always the narrower one.
 _INQUIRY_FIELDS: dict[str, tuple[str, ...]] = {
-    # "What can I study?" -- needs the training already finished, not the specialty.
-    "EDUCATION": ("service_branch", "years_of_service", "completed_training"),
+    # "What can I study?" -- needs finished training and study already done,
+    # not the job title and not the employment history.
+    "EDUCATION": (
+        "service_branch",
+        "years_of_service",
+        "completed_training",
+        "education",
+    ),
     # "Which certification should I sit?" -- needs the specialty and what is held.
     "CREDENTIAL": ("occupational_specialty", "completed_training", "credentials"),
-    # "How do I describe this on a resume?" -- needs the full picture of experience.
+    # "How do I describe this on a resume?" -- needs the full picture, which is
+    # the one question where the work history is the point.
     "CAREER": (
         "occupational_specialty",
         "years_of_service",
         "completed_training",
         "credentials",
+        "education",
+        "experience",
     ),
-    # "When should I start an internship?" -- needs timing, not the training list.
+    # "When should I start an internship?" -- needs timing, not the lists.
     "TRANSITION": ("service_branch", "years_of_service", "separation_date"),
     "GENERAL": ("service_branch",),
 }
@@ -93,6 +102,10 @@ class CustomerContext:
     separation_date: datetime | None = None
     completed_training: list[str] = field(default_factory=list)
     credentials: list[str] = field(default_factory=list)
+    # From the member's own profile. Nothing in the personnel record
+    # corresponds to these, which is exactly why members enter them.
+    education: list[str] = field(default_factory=list)
+    experience: list[str] = field(default_factory=list)
     available_fields: list[str] = field(default_factory=list)
 
     def to_prompt_facts(self) -> list[str]:
@@ -118,6 +131,12 @@ class CustomerContext:
 
         if "credentials" in self.available_fields and self.credentials:
             facts.append("Credentials already held: " + ", ".join(self.credentials))
+
+        if "education" in self.available_fields and self.education:
+            facts.append("Education: " + ", ".join(self.education))
+
+        if "experience" in self.available_fields and self.experience:
+            facts.append("Experience: " + ", ".join(self.experience))
 
         return facts
 
@@ -288,19 +307,23 @@ class CustomerDataAdapter:
         row = self._load(user_id)
         # What the member added in "My record". It counts exactly like the
         # service record, under the same per-inquiry permission list.
-        added_training, added_credentials = MemberRecordService(self._db).names(user_id)
+        profile = MemberRecordService(self._db).by_kind(user_id)
+        added_training = profile["TRAINING"]
+        added_credentials = profile["CREDENTIAL"]
         allowed = _INQUIRY_FIELDS.get(inquiry_type.upper(), _INQUIRY_FIELDS["GENERAL"])
 
         if row is None:
-            if not (added_training or added_credentials):
+            if not any(profile.values()):
                 return UNKNOWN_CONTEXT
-            # No personnel record, but the member has told us what they have
-            # done. Use that rather than answering as if we knew nothing.
+            # No personnel record, but the member has filled in a profile. Use
+            # it rather than answering as if we knew nothing about them.
             context = CustomerContext(
                 customer_ref="SELF-REPORTED",
                 service_branch="UNKNOWN",
                 completed_training=added_training,
                 credentials=added_credentials,
+                education=profile["EDUCATION"],
+                experience=profile["EXPERIENCE"],
                 available_fields=[field for field in allowed if field != "service_branch"],
             )
             cache.set(cache_key, context)
@@ -320,6 +343,8 @@ class CustomerDataAdapter:
             separation_date=row.sep_dt,
             completed_training=_merge(_split_list(row.cmpltd_trng_txt), added_training),
             credentials=_merge(_split_list(row.cred_erned_txt), added_credentials),
+            education=profile["EDUCATION"],
+            experience=profile["EXPERIENCE"],
             available_fields=list(allowed),
         )
         cache.set(cache_key, context)

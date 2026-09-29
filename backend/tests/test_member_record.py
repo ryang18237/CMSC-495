@@ -1,5 +1,5 @@
-"""My record: members save their own training and credentials once, and every
-conversation after that uses them.
+"""My profile: members enter their credentials, training, education and
+experience once, and every conversation after that uses them.
 """
 
 import base64
@@ -25,6 +25,56 @@ def test_record_shows_the_service_record_and_nothing_added_yet(
     assert body["serviceRecord"]["credentials"] == ["CompTIA A+"]
     assert "Network Administration Course" in body["serviceRecord"]["completedTraining"]
     assert body["added"] == []
+
+
+def test_profile_reports_how_complete_it_is(
+    client: TestClient, customer_auth: dict[str, str]
+) -> None:
+    """The score tells the member what is still worth adding."""
+    start = client.get(RECORD, headers=customer_auth).json()["completeness"]
+    # A service record but no profile items: one of five parts filled.
+    assert start["percent"] == 20
+    assert set(start["missingKinds"]) == {"CREDENTIAL", "TRAINING", "EDUCATION", "EXPERIENCE"}
+
+    for kind, name in (
+        ("EDUCATION", "Associate of Applied Science"),
+        ("EXPERIENCE", "Help Desk Technician"),
+    ):
+        client.post(f"{RECORD}/items", headers=customer_auth, json={"kind": kind, "name": name})
+
+    after = client.get(RECORD, headers=customer_auth).json()["completeness"]
+    assert after["percent"] == 60
+    assert set(after["missingKinds"]) == {"CREDENTIAL", "TRAINING"}
+
+
+def test_education_and_experience_are_saved_with_their_organisation(
+    client: TestClient, customer_auth: dict[str, str]
+) -> None:
+    degree = client.post(
+        f"{RECORD}/items",
+        headers=customer_auth,
+        json={
+            "kind": "EDUCATION",
+            "name": "Bachelor of Science in Information Technology",
+            "organization": "Western Governors University",
+            "detail": "Expected 2027",
+        },
+    )
+    assert degree.status_code == 201
+    body = degree.json()
+    assert body["kind"] == "EDUCATION"
+    assert body["organization"] == "Western Governors University"
+    assert body["detail"] == "Expected 2027"
+
+    job = client.post(
+        f"{RECORD}/items",
+        headers=customer_auth,
+        json={"kind": "EXPERIENCE", "name": "Help Desk Technician", "organization": "Fort Hood"},
+    ).json()
+    assert job["detail"] is None  # optional, and absent means absent
+
+    kinds = {item["kind"] for item in client.get(RECORD, headers=customer_auth).json()["added"]}
+    assert kinds == {"EDUCATION", "EXPERIENCE"}
 
 
 def test_member_adds_and_removes_an_item(client: TestClient, customer_auth: dict[str, str]) -> None:
@@ -63,6 +113,8 @@ def test_bad_items_all_return_one_code(client: TestClient, customer_auth: dict[s
         {"kind": "HOBBY", "name": "Chess"},
         {"kind": "TRAINING", "name": "   "},
         {"kind": "TRAINING", "name": "x" * 201},
+        {"kind": "EDUCATION", "name": "Degree", "organization": "x" * 201},
+        {"kind": "EXPERIENCE", "name": "Role", "detail": "x" * 501},
     ):
         response = client.post(f"{RECORD}/items", headers=customer_auth, json=bad)
         assert response.status_code == 422
@@ -268,3 +320,76 @@ def test_upload_route_accepts_a_document_larger_than_other_routes(
         f"{RECORD}/items", headers=customer_auth, json={"kind": "TRAINING", "name": "x" * 70000}
     )
     assert normal.status_code == 413
+
+
+# ---------------------------------------------------------------------------
+# A whole resume, in one upload
+# ---------------------------------------------------------------------------
+RESUME = """Alex Rivera
+alex@example.com
+
+Education
+Associate of Applied Science in Network Systems, Central Texas College
+Bachelor of Science in Information Technology - Western Governors University
+
+Certifications
+CompTIA Security+ (2023)
+Cisco CCNA
+
+Military Training
+Network Administration Course
+Basic Leader Course
+
+Work Experience
+Information Technology Specialist at 1st Signal Brigade
+Help Desk Technician - Fort Hood
+"""
+
+
+def test_a_resume_fills_all_four_kinds() -> None:
+    found, _ = extract_candidates("resume.txt", _b64(RESUME))
+    by_kind: dict[str, list[str]] = {}
+    for item in found:
+        by_kind.setdefault(item.kind, []).append(item.name)
+
+    assert set(by_kind) == {"CREDENTIAL", "TRAINING", "EDUCATION", "EXPERIENCE"}
+    assert "CompTIA Security+" in by_kind["CREDENTIAL"]
+    assert "Basic Leader Course" in by_kind["TRAINING"]
+    assert "Bachelor of Science in Information Technology" in by_kind["EDUCATION"]
+    assert "Help Desk Technician" in by_kind["EXPERIENCE"]
+    # Contact details are not experience.
+    assert not any("alex@example.com" in name for names in by_kind.values() for name in names)
+
+
+def test_an_upload_separates_the_title_from_the_organisation() -> None:
+    found, _ = extract_candidates("resume.txt", _b64(RESUME))
+    by_name = {item.name: item.organization for item in found}
+
+    assert (
+        by_name["Bachelor of Science in Information Technology"] == "Western Governors University"
+    )
+    assert by_name["Associate of Applied Science in Network Systems"] == "Central Texas College"
+    assert by_name["Information Technology Specialist"] == "1st Signal Brigade"
+    # A title with no organisation stays whole.
+    assert by_name["Cisco CCNA"] is None
+
+
+def test_a_resume_upload_is_saved_once_confirmed(
+    client: TestClient, customer_auth: dict[str, str]
+) -> None:
+    candidates = client.post(
+        f"{RECORD}/import",
+        headers=customer_auth,
+        json={"filename": "resume.txt", "contentBase64": _b64(RESUME)},
+    ).json()["candidates"]
+
+    saved = client.post(
+        f"{RECORD}/items/bulk", headers=customer_auth, json={"items": candidates}
+    ).json()
+    assert len(saved["added"]) == len(candidates)
+
+    record = client.get(RECORD, headers=customer_auth).json()
+    assert record["completeness"]["percent"] == 100
+    assert record["completeness"]["missingKinds"] == []
+    degree = next(item for item in record["added"] if item["kind"] == "EDUCATION")
+    assert degree["organization"]

@@ -1,4 +1,4 @@
-"""My record -- the member's own training and credentials.
+"""My profile -- the member's own credentials, training, education and experience.
 
 Every route is member-only and acts on the signed-in member. No route accepts
 a member identifier from the client.
@@ -13,10 +13,16 @@ from app.db import get_db
 from app.errors import ForbiddenError
 from app.models import MemberRecordItem, User
 from app.modules.customer_data.adapter import CustomerDataAdapter
-from app.modules.customer_data.member_record import MemberRecordService, extract_candidates
+from app.modules.customer_data.member_record import (
+    KINDS,
+    Entry,
+    MemberRecordService,
+    extract_candidates,
+)
 from app.schemas import (
     MemberRecordItemView,
     MemberRecordResponse,
+    ProfileCompleteness,
     RecordCandidate,
     RecordImportRequest,
     RecordImportResponse,
@@ -43,8 +49,24 @@ def _view(item: MemberRecordItem) -> MemberRecordItemView:
         item_id=item.id,
         kind=RecordItemKind(item.kind),
         name=item.name,
+        organization=item.organization,
+        detail=item.detail,
         source=RecordItemSource(item.source),
         added_at=item.created_at,
+    )
+
+
+def _completeness(items: list[MemberRecordItem], has_service_record: bool) -> ProfileCompleteness:
+    """A blunt score: one fifth for the service record, one fifth per kind.
+
+    It exists to tell a member what is still worth adding, not to judge them,
+    so it counts presence rather than quantity.
+    """
+    present = {item.kind for item in items}
+    filled = len(present) + (1 if has_service_record else 0)
+    return ProfileCompleteness(
+        percent=round(filled / (len(KINDS) + 1) * 100),
+        missing_kinds=[RecordItemKind(kind) for kind in KINDS if kind not in present],
     )
 
 
@@ -54,6 +76,7 @@ def get_record(
 ) -> MemberRecordResponse:
     """The service record (read-only) and everything the member has added."""
     official = CustomerDataAdapter(db).service_record(member.id)
+    items = MemberRecordService(db).list_items(member.id)
     return MemberRecordResponse(
         service_record=(
             ServiceRecordSummary(
@@ -65,7 +88,8 @@ def get_record(
             if official
             else None
         ),
-        added=[_view(item) for item in MemberRecordService(db).list_items(member.id)],
+        added=[_view(item) for item in items],
+        completeness=_completeness(items, official is not None),
     )
 
 
@@ -77,7 +101,14 @@ def add_item(
     db: Session = Depends(get_db),
     member: User = Depends(require_member),
 ) -> MemberRecordItemView:
-    item = MemberRecordService(db).add(member.id, payload.kind, payload.name, source="MANUAL")
+    item = MemberRecordService(db).add(
+        member.id,
+        payload.kind,
+        payload.name,
+        payload.organization,
+        payload.detail,
+        source="MANUAL",
+    )
     db.commit()
     return _view(item)
 
@@ -94,7 +125,17 @@ def add_items(
 ) -> RecordItemsAddedResponse:
     """Save the items the member confirmed after an upload. Repeats are counted, not errors."""
     added, skipped = MemberRecordService(db).add_many(
-        member.id, [(item.kind, item.name) for item in payload.items], source="UPLOAD"
+        member.id,
+        [
+            Entry(
+                kind=item.kind,
+                name=item.name,
+                organization=item.organization,
+                detail=item.detail,
+            )
+            for item in payload.items
+        ],
+        source="UPLOAD",
     )
     db.commit()
     return RecordItemsAddedResponse(
@@ -121,7 +162,13 @@ def import_record(
     candidates, skipped = extract_candidates(payload.filename, payload.content_base64)
     return RecordImportResponse(
         candidates=[
-            RecordCandidate(kind=RecordItemKind(item.kind), name=item.name) for item in candidates
+            RecordCandidate(
+                kind=RecordItemKind(item.kind),
+                name=item.name,
+                organization=item.organization,
+                detail=item.detail,
+            )
+            for item in candidates
         ],
         skipped_lines=skipped,
     )

@@ -1,19 +1,32 @@
-"""My record -- training and credentials a member adds themselves.
+"""My profile -- what the member has done, entered once and kept.
 
-Part of the Customer Data Adapter. The legacy personnel record is read-only
-and frequently incomplete: a certification earned after separation, a civilian
-course, a license from a state board -- none of it ever reaches that system.
-A member adds those items here once. The adapter merges them with the legacy
-record, so every later conversation and every recommendation already knows
-about them; nobody re-uploads anything per conversation.
+Part of the Customer Data Adapter. The legacy personnel record holds military
+training and nothing else: a certification earned after separation, a degree,
+a civilian job never reach it. A member enters those here once. The adapter
+merges them with the legacy record, so every later conversation and every
+recommendation already knows about them; nobody restates anything per
+conversation.
+
+Four kinds, covering what a career conversation actually needs:
+
+| Kind | Example |
+| --- | --- |
+| `CREDENTIAL` | CompTIA Security+, an EMT license |
+| `TRAINING` | a course, a school, a military qualification |
+| `EDUCATION` | an associate degree, a bachelor's, coursework in progress |
+| `EXPERIENCE` | a job or role, military or civilian |
+
+Every item is a name plus an optional organisation (issuer, school, employer)
+and an optional detail line. Only the name is required, because a half-filled
+profile is still better than none.
 
 Two ways in:
 
-- **Typed** -- one item at a time from the "My record" panel.
-- **Uploaded** -- a text, CSV or PDF list (a transcript export, a resume
-  section). The document is read, likely items are extracted, and the member
-  confirms which to keep. Nothing from an upload is saved until they do, and
-  the document itself is never stored.
+- **Typed** -- one item at a time in the "My profile" panel.
+- **Uploaded** -- a text, CSV or PDF list (a transcript export, a resume).
+  The document is read, likely items are extracted, and the member confirms
+  which to keep. Nothing is saved until they do, and the document itself is
+  never stored.
 """
 
 import base64
@@ -31,11 +44,13 @@ from app.errors import ConflictError, NotFoundError, UnprocessableError
 from app.models import MemberRecordItem
 from app.modules.cache.service import get_cache
 
-KINDS = ("TRAINING", "CREDENTIAL")
+KINDS = ("CREDENTIAL", "TRAINING", "EDUCATION", "EXPERIENCE")
 MAX_NAME_LENGTH = 200
-# Generous for a real service history, and a ceiling on what one account can
+MAX_ORGANIZATION_LENGTH = 200
+MAX_DETAIL_LENGTH = 500
+# Generous for a real career history, and a ceiling on what one account can
 # push into every prompt.
-MAX_ITEMS = 100
+MAX_ITEMS = 150
 
 # ---------------------------------------------------------------------------
 # Storage
@@ -44,6 +59,16 @@ MAX_ITEMS = 100
 
 def _clean(name: str) -> str:
     return " ".join(name.split())
+
+
+@dataclass(frozen=True)
+class Entry:
+    """One profile item, validated and ready to store or offer."""
+
+    kind: str
+    name: str
+    organization: str | None = None
+    detail: str | None = None
 
 
 class MemberRecordService:
@@ -59,51 +84,102 @@ class MemberRecordService:
             )
         )
 
-    def names(self, user_id: uuid.UUID) -> tuple[list[str], list[str]]:
-        """(training, credentials) the member added, in the order they added them."""
-        items = self.list_items(user_id)
-        training = [item.name for item in items if item.kind == "TRAINING"]
-        credentials = [item.name for item in items if item.kind == "CREDENTIAL"]
-        return training, credentials
+    def by_kind(self, user_id: uuid.UUID) -> dict[str, list[str]]:
+        """Item names per kind, in the order the member added them.
 
-    def add(
-        self, user_id: uuid.UUID, kind: str, name: str, source: str = "MANUAL"
-    ) -> MemberRecordItem:
-        kind = kind.upper()
-        cleaned = _clean(name)
+        An item with an organisation reads better with it attached -- "Associate
+        of Applied Science (Central Texas College)" tells the recommender and
+        the assistant more than the title alone.
+        """
+        grouped: dict[str, list[str]] = {kind: [] for kind in KINDS}
+        for item in self.list_items(user_id):
+            label = f"{item.name} ({item.organization})" if item.organization else item.name
+            grouped.setdefault(item.kind, []).append(label)
+        return grouped
+
+    @staticmethod
+    def _validated(kind: str, name: str, organization: str | None, detail: str | None) -> Entry:
+        kind = kind.strip().upper()
         if kind not in KINDS:
             raise UnprocessableError(
-                "Kind must be TRAINING or CREDENTIAL.", code="INVALID_RECORD_ITEM"
+                "Kind must be CREDENTIAL, TRAINING, EDUCATION or EXPERIENCE.",
+                code="INVALID_RECORD_ITEM",
             )
+
+        cleaned = _clean(name)
         if not cleaned or len(cleaned) > MAX_NAME_LENGTH:
             raise UnprocessableError(
                 f"A name must contain between 1 and {MAX_NAME_LENGTH} characters.",
                 code="INVALID_RECORD_ITEM",
             )
 
+        # Optional fields: blank and absent mean the same thing.
+        org = _clean(organization or "") or None
+        if org and len(org) > MAX_ORGANIZATION_LENGTH:
+            raise UnprocessableError(
+                f"An organisation must be at most {MAX_ORGANIZATION_LENGTH} characters.",
+                code="INVALID_RECORD_ITEM",
+            )
+        text = _clean(detail or "") or None
+        if text and len(text) > MAX_DETAIL_LENGTH:
+            raise UnprocessableError(
+                f"A detail must be at most {MAX_DETAIL_LENGTH} characters.",
+                code="INVALID_RECORD_ITEM",
+            )
+        return Entry(kind=kind, name=cleaned, organization=org, detail=text)
+
+    def add(
+        self,
+        user_id: uuid.UUID,
+        kind: str,
+        name: str,
+        organization: str | None = None,
+        detail: str | None = None,
+        source: str = "MANUAL",
+    ) -> MemberRecordItem:
+        entry = self._validated(kind, name, organization, detail)
+
         existing = self.list_items(user_id)
-        if any(item.kind == kind and item.name.lower() == cleaned.lower() for item in existing):
-            raise ConflictError("That item is already on your record.", code="RECORD_ITEM_EXISTS")
+        if any(
+            item.kind == entry.kind and item.name.lower() == entry.name.lower() for item in existing
+        ):
+            raise ConflictError("That item is already on your profile.", code="RECORD_ITEM_EXISTS")
         if len(existing) >= MAX_ITEMS:
             raise UnprocessableError(
-                f"A record can hold at most {MAX_ITEMS} items.", code="RECORD_ITEM_LIMIT"
+                f"A profile can hold at most {MAX_ITEMS} items.", code="RECORD_ITEM_LIMIT"
             )
 
-        item = MemberRecordItem(user_id=user_id, kind=kind, name=cleaned, source=source)
+        item = MemberRecordItem(
+            user_id=user_id,
+            kind=entry.kind,
+            name=entry.name,
+            organization=entry.organization,
+            detail=entry.detail,
+            source=source,
+        )
         self._db.add(item)
         self._db.flush()
         _invalidate(user_id)
         return item
 
     def add_many(
-        self, user_id: uuid.UUID, items: list[tuple[str, str]], source: str = "UPLOAD"
+        self, user_id: uuid.UUID, entries: list[Entry], source: str = "UPLOAD"
     ) -> tuple[list[MemberRecordItem], int]:
         """Add what is new; count what was already there. Used after an upload."""
         added: list[MemberRecordItem] = []
         skipped = 0
-        for kind, name in items:
+        for entry in entries:
             try:
-                added.append(self.add(user_id, kind, name, source=source))
+                added.append(
+                    self.add(
+                        user_id,
+                        entry.kind,
+                        entry.name,
+                        entry.organization,
+                        entry.detail,
+                        source=source,
+                    )
+                )
             except ConflictError:
                 skipped += 1
         return added, skipped
@@ -113,7 +189,7 @@ class MemberRecordService:
         # Someone else's item is reported as missing, not forbidden, so ids
         # cannot be probed to learn that another member's item exists.
         if item is None or item.user_id != user_id:
-            raise NotFoundError("Record item not found.", code="RECORD_ITEM_NOT_FOUND")
+            raise NotFoundError("Profile item not found.", code="RECORD_ITEM_NOT_FOUND")
         self._db.delete(item)
         self._db.flush()
         _invalidate(user_id)
@@ -138,13 +214,36 @@ _CREDENTIAL_WORDS = re.compile(
     re.IGNORECASE,
 )
 _TRAINING_WORDS = re.compile(
-    r"\b(course|school|training|academy|class|program|programme|qualification|"
+    r"\b(course|school|training|academy|class|qualification|"
     r"apprenticeship|leader|instructor|seminar|workshop|curriculum)\b",
     re.IGNORECASE,
 )
+_EDUCATION_WORDS = re.compile(
+    r"\b(associate|bachelor\w*|master\w*|doctorate|phd|b\.?s\.?|b\.?a\.?|m\.?s\.?|"
+    r"m\.?b\.?a\.?|a\.?a\.?s\.?|degree|diploma|ged|university|college|major\w*|"
+    r"semester|credit hours?)\b",
+    re.IGNORECASE,
+)
+_EXPERIENCE_WORDS = re.compile(
+    r"\b(specialist|technician|operator|manager|supervisor|lead|analyst|engineer|"
+    r"administrator|assistant|coordinator|officer|sergeant|corpsman|medic|"
+    r"mechanic|electrician|driver|nurse|clerk|intern|experience|employed|"
+    r"years? at|worked)\b",
+    re.IGNORECASE,
+)
+# A heading tells us what the lines under it are, which beats guessing.
+_SECTION_KINDS = (
+    ("CREDENTIAL", r"licen[cs]es?|certifications?|certificates?|credentials?"),
+    ("EDUCATION", r"education|degrees?|academics?|colleges?|universit(y|ies)"),
+    (
+        "EXPERIENCE",
+        r"(work |employment |professional |military )?(experience|history)|"
+        r"employment|positions?|assignments?|roles?",
+    ),
+    ("TRAINING", r"training|courses?|military (education|training|courses?)|schools?"),
+)
 _SECTION = re.compile(
-    r"^\s*(?P<title>(licen[cs]es?|certifications?|credentials?|training|courses?|"
-    r"education|military (education|training|courses?)|schools?))\s*:?\s*$",
+    r"^\s*(?P<title>(" + "|".join(pattern for _, pattern in _SECTION_KINDS) + r"))\s*:?\s*$",
     re.IGNORECASE,
 )
 # Numbering, bullets, dates and course codes that transcripts put around a title.
@@ -152,10 +251,9 @@ _PREFIX = re.compile(r"^\s*([-*•●\d]+[.)]?\s+|[A-Z]{2,4}-\d{2,5}-\d{2,5}\s+)
 _DATE = re.compile(r"\b(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2}|(19|20)\d{2})\b")
 
 
-@dataclass(frozen=True)
-class Candidate:
-    kind: str
-    name: str
+# An extracted line is offered as the same Entry shape the member could have
+# typed, so confirming an upload and typing an item take the identical path.
+Candidate = Entry
 
 
 def _decode(filename: str, content_base64: str) -> str:
@@ -186,18 +284,37 @@ def _decode(filename: str, content_base64: str) -> str:
 
 
 def _classify(line: str, section: str | None) -> str | None:
+    """Which kind a line looks like, or the heading it sits under.
+
+    Order is deliberate. A credential name is the most distinctive, a degree
+    next. Job titles are last because words like "specialist" and "technician"
+    also appear inside course names, so they only decide a line that nothing
+    more specific has claimed.
+    """
     if _CREDENTIAL_WORDS.search(line):
         return "CREDENTIAL"
+    if _EDUCATION_WORDS.search(line):
+        return "EDUCATION"
     if _TRAINING_WORDS.search(line):
         return "TRAINING"
+    if _EXPERIENCE_WORDS.search(line):
+        return "EXPERIENCE"
     return section
 
 
-# Lines that are page furniture or personal details, never a course.
+# Lines that are page furniture or personal details, never a profile item.
 _NOISE = re.compile(
     r"^(page\s+\d+|name\s*:|ssn|dob\b|date of birth|rank\s*:|address\s*:|"
+    r"e-?mail|phone|resum[eé]\b|curriculum vitae|"
     r"(joint services )?transcript\b)",
     re.IGNORECASE,
+)
+
+# "Title -- Organisation", "Title at Employer", "Title, University". Splitting
+# these is what lets an upload fill the organisation field instead of jamming
+# everything into the name.
+_SPLIT_ORGANIZATION = re.compile(
+    r"^(?P<name>.{3,}?)\s*(?:\s[-\u2013\u2014]\s|\sat\s|\s\|\s|,\s)(?P<org>.{2,})$"
 )
 
 
@@ -244,12 +361,15 @@ def _rows_from_csv(text: str) -> list[tuple[str, str | None]]:
 
 
 def _section_kind(raw: str) -> str | None:
-    """CREDENTIAL or TRAINING if the line is a section heading, else None."""
+    """The kind this line announces as a heading, or None if it is not one."""
     heading = _SECTION.match(raw)
     if not heading:
         return None
-    title = heading.group("title").lower()
-    return "CREDENTIAL" if title.startswith(("licen", "certif", "credential")) else "TRAINING"
+    title = heading.group("title")
+    for kind, pattern in _SECTION_KINDS:
+        if re.fullmatch(pattern, title, re.IGNORECASE):
+            return kind
+    return None
 
 
 def _usable_name(raw: str) -> str | None:
@@ -260,6 +380,19 @@ def _usable_name(raw: str) -> str | None:
     if len(name) < 3 or len(name) > MAX_NAME_LENGTH or not re.search(r"[A-Za-z]", name):
         return None
     return name
+
+
+def _split_organization(name: str) -> tuple[str, str | None]:
+    """ "Associate of Science, Central Texas College" -> title and school."""
+    match = _SPLIT_ORGANIZATION.match(name)
+    if not match:
+        return name, None
+    title, org = match.group("name").strip(), match.group("org").strip()
+    # Only split when both halves survive as something readable; otherwise the
+    # line was a single title that happened to contain a comma.
+    if len(title) < 3 or len(org) < 2 or len(org) > MAX_ORGANIZATION_LENGTH:
+        return name, None
+    return title, org
 
 
 def extract_candidates(filename: str, content_base64: str) -> tuple[list[Candidate], int]:
@@ -301,9 +434,10 @@ def extract_candidates(filename: str, content_base64: str) -> tuple[list[Candida
             skipped += 1
             continue
 
+        name, organization = _split_organization(name)
         if (kind, name.lower()) not in seen:
             seen.add((kind, name.lower()))
-            found.append(Candidate(kind=kind, name=name))
+            found.append(Candidate(kind=kind, name=name, organization=organization))
         if len(found) >= MAX_ITEMS:
             break
 

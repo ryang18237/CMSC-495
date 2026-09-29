@@ -1444,6 +1444,28 @@
             "type": "string",
             "title": "Name"
           },
+          "organization": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organization"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
           "source": {
             "$ref": "#/components/schemas/RecordItemSource"
           },
@@ -1481,12 +1503,16 @@
             },
             "type": "array",
             "title": "Added"
+          },
+          "completeness": {
+            "$ref": "#/components/schemas/ProfileCompleteness"
           }
         },
         "type": "object",
         "required": [
           "serviceRecord",
-          "added"
+          "added",
+          "completeness"
         ],
         "title": "MemberRecordResponse"
       },
@@ -1569,6 +1595,27 @@
         ],
         "title": "MessageView"
       },
+      "ProfileCompleteness": {
+        "properties": {
+          "percent": {
+            "type": "integer",
+            "title": "Percent"
+          },
+          "missingKinds": {
+            "items": {
+              "$ref": "#/components/schemas/RecordItemKind"
+            },
+            "type": "array",
+            "title": "Missingkinds"
+          }
+        },
+        "type": "object",
+        "required": [
+          "percent",
+          "missingKinds"
+        ],
+        "title": "ProfileCompleteness"
+      },
       "RecommendationDecisionRequest": {
         "properties": {
           "reviewStatus": {
@@ -1640,6 +1687,28 @@
           "name": {
             "type": "string",
             "title": "Name"
+          },
+          "organization": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organization"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
           }
         },
         "type": "object",
@@ -1691,8 +1760,10 @@
       "RecordItemKind": {
         "type": "string",
         "enum": [
+          "CREDENTIAL",
           "TRAINING",
-          "CREDENTIAL"
+          "EDUCATION",
+          "EXPERIENCE"
         ],
         "title": "RecordItemKind"
       },
@@ -1705,6 +1776,28 @@
           "name": {
             "type": "string",
             "title": "Name"
+          },
+          "organization": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organization"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
           }
         },
         "type": "object",

@@ -149,13 +149,15 @@ class KnowledgeArticle(Base):
 
 
 class MemberRecordItem(Base):
-    """Training or a credential the member added themselves.
+    """One line of the member's own profile.
 
-    The legacy personnel record is read-only and often behind: a certification
-    earned after separation, or a civilian course, never reaches it. Members
-    add those here once, and every later conversation and recommendation uses
-    them without the member having to repeat themselves. Only the Customer
-    Data Adapter reads this table; it merges these rows with the legacy record.
+    The legacy personnel record is read-only and always partial: it holds
+    military training, and nothing else. A certification earned after
+    separation, a degree, a civilian job -- none of it ever reaches that
+    system. Members enter those once here, and every later conversation and
+    recommendation uses them without anyone repeating themselves. Only the
+    Customer Data Adapter reads this table; it merges these rows with the
+    legacy record.
     """
 
     __tablename__ = "member_record_items"
@@ -164,9 +166,14 @@ class MemberRecordItem(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(
         GUID, ForeignKey("users.id"), nullable=False, index=True
     )
-    # TRAINING or CREDENTIAL
+    # CREDENTIAL, TRAINING, EDUCATION or EXPERIENCE
     kind: Mapped[str] = mapped_column(String(20), nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
+    # Who issued or granted it, or the employer. Optional throughout: a member
+    # part way through filling a profile is still a usable profile.
+    organization: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # Free text: a completion year, a role summary, anything worth keeping.
+    detail: Mapped[str | None] = mapped_column(String(500), nullable=True)
     # MANUAL (typed in) or UPLOAD (confirmed from an uploaded document)
     source: Mapped[str] = mapped_column(String(10), nullable=False, default="MANUAL")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow)

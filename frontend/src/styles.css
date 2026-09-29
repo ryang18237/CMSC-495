@@ -361,7 +361,30 @@ button.link {
 .record-list { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
 .record-list li { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .record-list.official li { color: var(--muted); }
-.record-add { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px; margin-top: 12px; }
+.record-add {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px;
+  margin-top: 12px;
+}
+.record-add button[type='submit'] { grid-column: 2; justify-self: end; }
+.record-organization { grid-column: 2; }
+
+/* Profile completeness */
+.completeness { margin: 10px 0 4px; }
+.completeness-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+.completeness-bar span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 200ms ease;
+}
+.completeness p { margin-top: 6px; }
 .record-add select,
 .record-add input {
   padding: 7px 8px;
