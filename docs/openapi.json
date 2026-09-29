@@ -971,10 +971,63 @@
           }
         }
       }
+    },
+    "/api/v1/ai/providers": {
+      "get": {
+        "tags": [
+          "ai"
+        ],
+        "summary": "List Providers",
+        "operationId": "list_providers_api_v1_ai_providers_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AIProviderView"
+                  },
+                  "type": "array",
+                  "title": "Response List Providers Api V1 Ai Providers Get"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "AIProviderView": {
+        "properties": {
+          "providerId": {
+            "type": "string",
+            "title": "Providerid"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model"
+          },
+          "isDefault": {
+            "type": "boolean",
+            "title": "Isdefault"
+          }
+        },
+        "type": "object",
+        "required": [
+          "providerId",
+          "label",
+          "model",
+          "isDefault"
+        ],
+        "title": "AIProviderView"
+      },
       "AgentCaseResponse": {
         "properties": {
           "caseId": {
@@ -1175,6 +1228,17 @@
             "type": "string",
             "format": "date-time",
             "title": "Timestamp"
+          },
+          "answeredBy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answeredby"
           }
         },
         "type": "object",
@@ -1567,6 +1631,17 @@
           "message": {
             "type": "string",
             "title": "Message"
+          },
+          "provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provider"
           }
         },
         "type": "object",
@@ -2138,6 +2213,10 @@
     {
       "name": "pathways",
       "description": "Recommended next credentials and programs, ranked against what the signed-in member has completed. Runs locally; no AI provider key needed."
+    },
+    {
+      "name": "ai",
+      "description": "The AI models this server can use. Keys stay on the server."
     },
     {
       "name": "ops",

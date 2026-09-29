@@ -30,12 +30,11 @@ minimised. Error messages raised from here describe the failure class and the
 HTTP status only; they never include request or response content.
 """
 
-import threading
-
 import httpx
 
 from app.config import get_settings
 from app.modules.ai_integration.contracts import AIProviderError, Prompt, ProviderResponse
+from app.modules.ai_integration.providers._http import reset_shared_http_client, shared_http_client
 from app.modules.ai_integration.providers.base import AIProvider
 
 ANTHROPIC_VERSION = "2023-06-01"
@@ -48,39 +47,9 @@ UNSUPPORTED_MARKER = "UNSUPPORTED_TOPIC"
 # Characters a model may add around the marker when it declines.
 _MARKER_TRIM = " \t\n\r.!\"'*`"
 
-# One connection pool is shared across requests. `build_provider()` constructs a
-# new provider object per turn, so a per-instance client would open a fresh
-# pool (and leak sockets) on every customer message.
-_shared_client: httpx.Client | None = None
-
-# FastAPI runs these synchronous routes on a thread pool, so two first requests
-# can arrive at once. Without the lock both see no client, both build one, and
-# the loser's pool is never closed. Checked once outside the lock so the normal
-# path -- a client already exists -- costs nothing.
-_client_lock = threading.Lock()
-
-
-def _shared_http_client(timeout: float) -> httpx.Client:
-    global _shared_client
-    client = _shared_client
-    if client is not None and not client.is_closed:
-        return client
-    with _client_lock:
-        if _shared_client is None or _shared_client.is_closed:
-            _shared_client = httpx.Client(
-                timeout=timeout,
-                limits=httpx.Limits(max_connections=50, max_keepalive_connections=10),
-            )
-        return _shared_client
-
-
-def reset_shared_client() -> None:
-    """Close the shared pool. Used by tests and by an orderly shutdown."""
-    global _shared_client
-    with _client_lock:
-        if _shared_client is not None and not _shared_client.is_closed:
-            _shared_client.close()
-        _shared_client = None
+# The connection pool is shared with every other HTTP provider; see _http.py.
+_shared_http_client = shared_http_client
+reset_shared_client = reset_shared_http_client
 
 
 class AnthropicProvider(AIProvider):

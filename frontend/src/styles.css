@@ -617,5 +617,9 @@ button.link:hover:not(:disabled) { color: #8ab0f5; }
 .pill.strength.good { background: var(--accent-soft); color: var(--accent); }
 .pill.strength.exploratory { background: var(--surface-3); color: var(--muted); }
 
+/* Model picker in the chat header */
+.model-picker { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; }
+.model-picker select { width: auto; padding: 7px 9px; font-size: 13px; }
+
 /* A tab panel that is a grid would otherwise ignore the hidden attribute. */
 [hidden] { display: none !important; }

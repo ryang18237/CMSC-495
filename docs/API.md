@@ -75,6 +75,7 @@ Send the token on every other call: `Authorization: Bearer <accessToken>`.
 | POST | `/api/v1/profile/record/items/bulk` | Add confirmed items after an upload (member only) | 201 |
 | DELETE | `/api/v1/profile/record/items/{itemId}` | Remove an item the member added (member only) | 204 |
 | POST | `/api/v1/profile/record/import` | Read an uploaded .txt, .csv or .pdf and suggest items; saves nothing (member only) | 200 |
+| GET | `/api/v1/ai/providers` | AI models this server can use, for the member's model picker | 200 |
 | GET | `/api/v1/pathways/recommended` | Recommended next credentials and programs (member only) | 200 |
 | GET | `/api/v1/ops/metrics` | Operational counters (agent only) | 200 |
 | GET | `/api/v1/health` | Application health | 200 |
@@ -107,12 +108,13 @@ Authentication failures return **401**.
 ### Request
 
 ```json
-{ "message": "Which certification should I work toward next?" }
+{ "message": "Which certification should I work toward next?", "provider": "openai" }
 ```
 
 | Field | Type | Required | Constraints |
 | --- | --- | --- | --- |
 | `message` | String | Yes | 1–2,000 characters; trimmed; cannot be blank |
+| `provider` | String | No | One of the ids from `GET /api/v1/ai/providers`. Omitted means the server default |
 
 | Path parameter | Type | Constraints |
 | --- | --- | --- |
@@ -127,7 +129,8 @@ Authentication failures return **401**.
   "response": "A foundational IT certification is the closest next step.",
   "status": "ANSWERED",
   "escalationReason": null,
-  "timestamp": "2026-08-27T20:30:00Z"
+  "timestamp": "2026-08-27T20:30:00Z",
+  "answeredBy": "openai"
 }
 ```
 
@@ -139,6 +142,7 @@ Authentication failures return **401**.
 | `status` | Enum | `ANSWERED`, `ESCALATED` or `ERROR` |
 | `escalationReason` | Enum \| null | Null unless escalation occurs |
 | `timestamp` | ISO 8601 | UTC |
+| `answeredBy` | String \| null | Provider that answered (`anthropic`, `openai`, `mock`); null when escalated |
 
 **Escalation is rule-based, not confidence-based.** The application does not
 use an undefined numeric AI confidence score. `status` becomes `ESCALATED`
@@ -154,7 +158,8 @@ when one of these deterministic conditions holds:
 
 Errors: **400** malformed identifier · **401** · **403** not the caller's
 conversation · **404** conversation missing · **409** conversation closed ·
-**413** payload too large · **422** message length · **429** rate limit.
+**413** payload too large · **422** message length, or `AI_PROVIDER_UNAVAILABLE`
+for a `provider` this server has no key for · **429** rate limit.
 
 ---
 
@@ -385,6 +390,28 @@ not treated as errors.
 Removes an item the member entered. Service-record items cannot be removed.
 Another member's item id returns **404** `RECORD_ITEM_NOT_FOUND`, so ids
 cannot be probed.
+
+---
+
+## GET /api/v1/ai/providers
+
+Any signed-in user. Lists the models a member can pick in the chat: every
+provider this server has a key for, plus the demo assistant, which needs none.
+Keys are never returned — only a name and a model id.
+
+```json
+[
+  { "providerId": "anthropic", "label": "Claude", "model": "claude-haiku-4-5-20251001", "isDefault": true },
+  { "providerId": "openai", "label": "ChatGPT", "model": "gpt-6-luna", "isDefault": false },
+  { "providerId": "mock", "label": "Demo assistant (no AI key)", "model": "mock-skillbridge-v2", "isDefault": false }
+]
+```
+
+`isDefault` marks the provider used when a message names none: `AI_PROVIDER`
+if its key is set, otherwise the demo assistant.
+
+---
+
 ## GET /api/v1/pathways/recommended
 
 Member only (`CUSTOMER` role). Ranks civilian credentials, programs and
@@ -631,7 +658,7 @@ Every failure uses the same shape:
 | 405 | Method not allowed on this route | `METHOD_NOT_ALLOWED` |
 | 409 | Conflicting conversation, case or review state | `CONFLICT`, `ESCALATION_ALREADY_ACTIVE`, `CONVERSATION_CLOSED`, `CASE_ALREADY_CLOSED`, `CASE_NOT_OPEN`, `CASE_ALREADY_ASSIGNED`, `RECORD_ITEM_EXISTS`, `FEEDBACK_ALREADY_RECORDED`, `RECOMMENDATION_ALREADY_REVIEWED` |
 | 413 | Payload exceeds the permitted size | `PAYLOAD_TOO_LARGE` |
-| 422 | Valid syntax, failed validation | `INVALID_REQUEST` (schema), `UNPROCESSABLE_REQUEST`, `INVALID_MESSAGE`, `INVALID_REPLY`, `INVALID_COMMENT`, `INVALID_REVIEW_DECISION`, `INVALID_RECORD_ITEM`, `RECORD_ITEM_LIMIT`, `UNSUPPORTED_RECORD_FILE`, `INVALID_RECORD_FILE` |
+| 422 | Valid syntax, failed validation | `INVALID_REQUEST` (schema), `UNPROCESSABLE_REQUEST`, `INVALID_MESSAGE`, `INVALID_REPLY`, `INVALID_COMMENT`, `INVALID_REVIEW_DECISION`, `INVALID_RECORD_ITEM`, `RECORD_ITEM_LIMIT`, `AI_PROVIDER_UNAVAILABLE`, `UNSUPPORTED_RECORD_FILE`, `INVALID_RECORD_FILE` |
 | 429 | Rate limit exceeded | `RATE_LIMIT_EXCEEDED` |
 | 500 | Unexpected server fault; details are logged, never returned | `INTERNAL_ERROR` |
 | 502 | Upstream returned an invalid response | `UPSTREAM_INVALID_RESPONSE` |

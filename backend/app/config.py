@@ -71,8 +71,13 @@ class Settings(BaseSettings):
     # AI Integration Module
     ai_provider: str = "mock"
     anthropic_api_key: str = ""
-    anthropic_model: str = "claude-sonnet-4-5"
+    # A dated model id, so a demonstration is reproducible (peer review).
+    anthropic_model: str = "claude-haiku-4-5-20251001"
     anthropic_base_url: str = "https://api.anthropic.com"
+    # ChatGPT models through the OpenAI API. Only offered when a key is set.
+    openai_api_key: str = ""
+    openai_model: str = "gpt-6-luna"
+    openai_base_url: str = "https://api.openai.com"
     # Sized against the ~5 second response target (peer review, High). A
     # retry is only started while the turn is still inside the retry budget,
     # so the worst case is about budget + one timeout (~13 s), not

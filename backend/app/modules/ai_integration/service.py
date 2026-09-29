@@ -5,6 +5,7 @@ the application talks to this service and never to a provider directly.
 """
 
 import time
+from dataclasses import dataclass
 
 from app.config import get_settings
 from app.modules.ai_integration.contracts import (
@@ -17,6 +18,7 @@ from app.modules.ai_integration.contracts import (
 from app.modules.ai_integration.providers.anthropic_provider import AnthropicProvider
 from app.modules.ai_integration.providers.base import AIProvider
 from app.modules.ai_integration.providers.mock import MockAIProvider
+from app.modules.ai_integration.providers.openai_provider import OpenAIProvider
 
 FALLBACK_MESSAGE = (
     "I'm sorry -- I can't reach the assistant service right now, and I'd rather not "
@@ -49,17 +51,69 @@ ERROR_DETAIL_LIMIT = 200
 
 def shutdown() -> None:
     """Release resources held across requests. Called once, at application shutdown."""
-    from app.modules.ai_integration.providers.anthropic_provider import reset_shared_client
+    from app.modules.ai_integration.providers._http import reset_shared_http_client
 
-    reset_shared_client()
+    reset_shared_http_client()
+
+
+# Every provider the platform knows, with the name a member sees. The mock is
+# always available so the platform works with no key at all.
+_PROVIDERS: dict[str, tuple[str, type[AIProvider]]] = {
+    "anthropic": ("Claude", AnthropicProvider),
+    "openai": ("ChatGPT", OpenAIProvider),
+    "mock": ("Demo assistant (no AI key)", MockAIProvider),
+}
+
+
+@dataclass(frozen=True)
+class ProviderOption:
+    provider_id: str
+    label: str
+    model: str
+    is_default: bool
 
 
 def build_provider(name: str | None = None) -> AIProvider:
-    """Provider factory. Selection is configuration, not code."""
+    """Provider factory. Selection is configuration, or a member's choice."""
     selected = (name or get_settings().ai_provider).strip().lower()
-    if selected == "anthropic":
-        return AnthropicProvider()
-    return MockAIProvider()
+    _, provider_class = _PROVIDERS.get(selected, _PROVIDERS["mock"])
+    return provider_class()
+
+
+def _model_for(provider_id: str) -> str:
+    settings = get_settings()
+    return {
+        "anthropic": settings.anthropic_model,
+        "openai": settings.openai_model,
+    }.get(provider_id, "mock-skillbridge-v2")
+
+
+def available_providers() -> list[ProviderOption]:
+    """Providers a member may choose: those with a key configured, plus the mock.
+
+    Availability is decided here, on the server, from configuration. The keys
+    themselves never leave the process -- a member only ever sees a name.
+    """
+    ready = [
+        provider_id
+        for provider_id, (_, provider_class) in _PROVIDERS.items()
+        if provider_class().health() == "ok"
+    ]
+    configured = get_settings().ai_provider.strip().lower()
+    default = configured if configured in ready else "mock"
+    return [
+        ProviderOption(
+            provider_id=provider_id,
+            label=_PROVIDERS[provider_id][0],
+            model=_model_for(provider_id),
+            is_default=provider_id == default,
+        )
+        for provider_id in ready
+    ]
+
+
+def is_available(provider_id: str) -> bool:
+    return any(option.provider_id == provider_id for option in available_providers())
 
 
 class AIIntegrationService:

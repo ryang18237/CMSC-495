@@ -2,14 +2,15 @@
 
 **Owner:** Benjamin Madden (Integration Lead)
 
-SkillBridge AI has two AI features. They solve different problems and fail in
+SkillBridge AI has two AI features, and lets the member choose which model
+answers. They solve different problems and fail in
 different ways, so they are built differently on purpose.
 
 | | Conversational assistant | Pathway recommender |
 | --- | --- | --- |
 | What the member sees | Answers to free-text questions in the chat | "Recommended next steps" panel beside the chat |
 | Technique | Large language model behind a provider interface | Content-based filtering: TF-IDF vectors and cosine similarity |
-| Needs an API key | Yes for real answers; a mock stands in without one | No |
+| Needs an API key | For Claude or ChatGPT; a record-aware demo assistant answers without one | No |
 | Deterministic | No | Yes — same record, same list |
 | When it fails | Escalates to a counsellor with `AI_SERVICE_FAILURE` | Falls back to general starting points |
 | Code | `app/modules/ai_integration/service.py`, `providers/` | `app/modules/ai_integration/recommender.py`, `data/pathways.json` |
@@ -53,35 +54,88 @@ to contain only `model`, `max_tokens`, `system` and `messages`:
 
 No member name, email, member number or identifier is ever included.
 
-### Choosing a provider
+### Providers and the member's choice
 
-Configuration only, never code:
+Three providers sit behind the same `AIProvider` interface. Everything that
+keeps the assistant safe — minimised prompts, the retry budget, response
+validation, the handover to a counsellor — lives in `AIIntegrationService`, so
+it applies identically whichever one answers.
+
+| Provider id | Member sees | Needs | Endpoint called |
+| --- | --- | --- | --- |
+| `anthropic` | Claude | `ANTHROPIC_API_KEY` | Anthropic Messages API |
+| `openai` | ChatGPT | `OPENAI_API_KEY` | OpenAI Chat Completions |
+| `mock` | Demo assistant (no AI key) | nothing | none — runs in process |
+
+`GET /api/v1/ai/providers` lists only the providers this server has a key for,
+plus the demo assistant. When more than one is available, the chat shows a
+**Model** picker and sends the chosen id with each message; the reply says
+which one answered. A provider without a key can never be selected — the API
+refuses it with `422 AI_PROVIDER_UNAVAILABLE` — and **no key ever leaves the
+server**: the browser only ever sees a name and a model id.
+
+`AI_PROVIDER` sets the default, used when a message names none and when it has
+a key; otherwise the default is the demo assistant.
+
+### Getting a key
+
+Each team member uses **their own** key, in **their own** `backend/.env`,
+which git ignores. Never share a key in the repository, a chat or a commit.
+
+**Claude (Anthropic)**
+
+1. Sign in at <https://console.anthropic.com>.
+2. Add credits under **Billing** — the API is pay-as-you-go and separate from
+   a Claude.ai subscription.
+3. **API Keys → Create Key**. Copy it once; it is not shown again.
+4. Optional but recommended: set a monthly spend limit.
+
+**ChatGPT (OpenAI)**
+
+1. Sign in at <https://platform.openai.com>.
+2. Add a payment method under **Billing**. A ChatGPT Plus subscription does
+   **not** include API usage; the two are billed separately.
+3. **API keys → Create new secret key**. Copy it once.
+4. Optional but recommended: set a usage limit for the project.
+
+Then, in `backend/.env`:
 
 ```bash
 # backend/.env -- git-ignored, never committed
-AI_PROVIDER=anthropic
-ANTHROPIC_API_KEY=sk-ant-...        # your own key
-ANTHROPIC_MODEL=claude-sonnet-4-5
+AI_PROVIDER=anthropic                       # the default model
+ANTHROPIC_API_KEY=sk-ant-...                # your own key, if you have one
+ANTHROPIC_MODEL=claude-haiku-4-5-20251001
+OPENAI_API_KEY=sk-...                       # your own key, if you have one
+OPENAI_MODEL=gpt-6-luna
 ```
 
-| `AI_PROVIDER` | Used by | Behaviour |
-| --- | --- | --- |
-| `mock` (default) | CI, graders, anyone without a key | Deterministic, topic-aware canned answers. Exercises the whole pipeline. |
-| `anthropic` | A member of the team with their own key | Real answers from the Messages API |
+Restart `python run.py`. `/api/v1/health` shows the default provider, and the
+chat shows the picker once two or more are available.
 
-With `anthropic` selected and no key, `/api/v1/health` reports `degraded` and
-every turn escalates. The platform keeps working; it just hands members to a
-person.
+**Model versions.** Defaults are dated or specific model ids so a demonstration
+is reproducible. Check the current model lists on each provider's site and set
+`ANTHROPIC_MODEL` / `OPENAI_MODEL` if a default has been retired.
 
-**Model version.** `claude-sonnet-4-5` is an alias that moves as the provider
-releases updates. For a reproducible demonstration, set `ANTHROPIC_MODEL` to a
-dated model identifier and record which one was used.
+**If a key leaks,** revoke it in that console at once and create a new one.
+Deleting the commit does not help — the key stays in git history. A key is
+read at startup, so a new one takes effect after a restart.
 
-**Keys and cost.** Each team member uses their own key in their own
-git-ignored `backend/.env`; nobody commits one and CI never has one. A key is
-read once at startup, so a rotated key takes effect after a restart. A `429`
-from the provider means the key's rate limit was hit; it is retried once inside
-the budget below and otherwise hands the member to a counsellor.
+### The demo assistant
+
+With no key the demo assistant answers — and it answers from the member's own
+record, not from canned text. It reads the same minimised facts a real model
+would receive (training completed, credentials held, specialty), asks the
+pathway recommender for the closest next steps, and builds the reply from
+them. Two members get different answers, and one member gets a different
+answer after adding something to **My record**:
+
+> Looking at your record, you already hold CompTIA A+ and CompTIA Security+
+> and you have completed Basic Leader Course, Network Administration Course
+> and Information Assurance Fundamentals. The closest next steps from that are
+> CompTIA Network+, the natural step after CompTIA A+; and CompTIA
+> Cybersecurity Analyst (CySA+), the natural step after CompTIA Security+. …
+
+It is still deterministic, so tests and CI can rely on it.
 
 ### Failure handling
 
@@ -222,5 +276,6 @@ refinement report, and where each stands.
 | --- | --- |
 | `tests/test_ai_provider.py` | Request shape, status mapping, retry flags, retry budget, parsing, truncation as a validation failure, decline-marker normalisation, capped error detail, key never logged, pool closed on shutdown |
 | `tests/test_modules.py` | Retry policy, fallback and escalation on provider failure |
+| `tests/test_model_choice.py` | ChatGPT provider wire format, status mapping, refusal and truncation; which providers are offered; the member's choice honoured and unconfigured choices refused; keys never exposed; demo answers built from the member's record |
 | `tests/test_recommender.py` | Tokenising, ranking, held-credential filtering, explanations, cold start, catalog integrity, offline evaluation, the HTTP route, and the shared-pool lock under 20 concurrent threads |
 | `frontend/src/components/PathwayRecommendations.test.jsx` | Reasons and strengths rendered, general fallback, error code shown |

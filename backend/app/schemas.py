@@ -106,6 +106,10 @@ class MessageRequest(ApiModel):
     # Length is validated in the service layer so that an over-long message
     # returns 422 INVALID_MESSAGE with the documented wording.
     message: str
+    # Optional choice of model for this message: "anthropic", "openai" or
+    # "mock". Omitted means the server's default. Only providers listed by
+    # GET /api/v1/ai/providers are accepted.
+    provider: str | None = None
 
 
 class ChatResponse(ApiModel):
@@ -115,6 +119,8 @@ class ChatResponse(ApiModel):
     status: MessageStatus
     escalation_reason: EscalationReason | None = None
     timestamp: datetime
+    # Which provider produced an ANSWERED reply. Null when escalated.
+    answered_by: str | None = None
 
 
 # --------------------------------------------------------------------------
@@ -389,3 +395,13 @@ class PathwayRecommendationsResponse(ApiModel):
     method: str
     recommendations: list[PathwayRecommendationView]
     disclaimer: str
+
+
+# --------------------------------------------------------------------------
+# GET /api/v1/ai/providers
+# --------------------------------------------------------------------------
+class AIProviderView(ApiModel):
+    provider_id: str
+    label: str
+    model: str
+    is_default: bool

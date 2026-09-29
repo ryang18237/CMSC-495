@@ -10,7 +10,9 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_conversation_service, parse_uuid
 from app.api.v1.views import to_message_view
 from app.db import get_db
+from app.errors import UnprocessableError
 from app.models import User
+from app.modules.ai_integration.service import AIIntegrationService, build_provider, is_available
 from app.modules.conversation.service import ConversationService
 from app.modules.escalation.service import EscalationService
 from app.modules.feedback.service import FeedbackService
@@ -57,6 +59,16 @@ def post_message(
 ) -> ChatResponse:
     enforce_rate_limit(f"messages:{user.id}")
     conversation_uuid = parse_uuid(conversation_id, "conversationId")
+    if payload.provider:
+        # The member chose a model. Only a configured one is accepted, so a
+        # request can never make the server call a provider it has no key for.
+        chosen = payload.provider.strip().lower()
+        if not is_available(chosen):
+            raise UnprocessableError(
+                "That AI model is not available on this server.",
+                code="AI_PROVIDER_UNAVAILABLE",
+            )
+        service = ConversationService(db, ai_service=AIIntegrationService(build_provider(chosen)))
     result = service.process_message(conversation_uuid, user.id, payload.message)
     db.commit()
     return result

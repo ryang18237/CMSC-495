@@ -364,6 +364,8 @@ def test_shared_pool_is_closed_on_shutdown():
 
     with TestClient(create_app()):
         anthropic_provider._shared_http_client(5.0)
-        assert anthropic_provider._shared_client is not None
+        from app.modules.ai_integration.providers import _http
 
-    assert anthropic_provider._shared_client is None
+        assert _http._client is not None
+
+    assert _http._client is None
