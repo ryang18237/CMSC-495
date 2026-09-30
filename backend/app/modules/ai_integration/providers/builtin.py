@@ -29,6 +29,7 @@ on every push with no key and no spend.
 """
 
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from app.modules.ai_integration.contracts import AIProviderError, Prompt, ProviderResponse
@@ -201,8 +202,77 @@ def _next_steps(profile: MemberProfile, kinds: tuple[str, ...] | None = None) ->
     return f"The closest next steps from that are {described[0]}; and {described[1]}."
 
 
+# ---------------------------------------------------------------------------
+# The answer shapes. Each takes the member's facts and returns a reply, or ""
+# when this member's profile cannot support that kind of answer.
+# ---------------------------------------------------------------------------
+def _answer_profile(facts: _Facts) -> str:
+    """Read the profile back, so a member can see what the advice is built on."""
+    pieces = [
+        f"{label}: {_joined(items)}"
+        for label, items in (
+            ("credentials", facts.profile.credentials),
+            ("education", facts.education),
+            ("experience", facts.experience),
+            ("training", facts.training_only),
+        )
+        if items
+    ]
+    return (
+        "Your profile currently lists "
+        + "; ".join(pieces)
+        + ". Add anything missing in My profile and I will use it from then on."
+    )
+
+
+def _answer_degree(facts: _Facts) -> str:
+    degrees = _next_steps(facts.profile, ("DEGREE", "PROGRAM"))
+    if not degrees:
+        return ""
+    return (
+        f"{_record_sentence(facts)} {degrees} Military training is often reviewed for "
+        "credit, so ask the school for a credit evaluation before you enrol. A credential "
+        "first and a degree part time afterwards is a common order."
+    )
+
+
+def _answer_next_step(facts: _Facts) -> str:
+    steps = _next_steps(facts.profile, ("CERTIFICATION", "LICENSE")) or _next_steps(facts.profile)
+    if not steps:
+        return ""
+    return (
+        f"{_record_sentence(facts)} {steps} Compare the published objectives against what "
+        "you have already covered before booking an exam, and a counsellor can go through "
+        "funding options with you."
+    )
+
+
+def _answer_resume(facts: _Facts) -> str:
+    lines = ["Lead with what you were responsible for rather than your job title."]
+    if facts.experience:
+        lines.append(
+            f"Put {_joined(facts.experience)} at the top, each with the scope you handled "
+            "and the people or systems you were accountable for."
+        )
+    items = facts.training_only[:3] + facts.profile.credentials[:2]
+    if items:
+        lines.append(f"List {_joined(items)} by what each taught you, not by course number.")
+    if facts.profile.credentials:
+        lines.append("Credentials belong in their own section near the top.")
+    return " ".join(lines)
+
+
 class BuiltInAdvisor(AIProvider):
     name = "builtin"
+
+    # Tried in order. A question about a degree mentions "certification" often
+    # enough that the degree shape has to come first.
+    _ANSWERS: tuple[tuple[tuple[str, ...], Callable[[_Facts], str]], ...] = (
+        (_EXPERIENCE_TOPIC, _answer_profile),
+        (_DEGREE_TOPIC, _answer_degree),
+        (_CREDENTIAL_TOPIC + _NEXT_STEP_TOPIC, _answer_next_step),
+        (_RESUME_TOPIC, _answer_resume),
+    )
 
     def generate(self, prompt: Prompt) -> ProviderResponse:
         # The newest customer turn is always last; earlier turns are history.
@@ -233,67 +303,22 @@ class BuiltInAdvisor(AIProvider):
         # what the validation module turns into an UNSUPPORTED_TOPIC escalation.
         return ProviderResponse(text=UNSUPPORTED_MARKER, model=MODEL, stop_reason="end_turn")
 
-    @staticmethod
-    def _personal_reply(system: str, lowered: str) -> str:
-        """A reply built from this member's profile, or "" for the general one."""
+    def _personal_reply(self, system: str, lowered: str) -> str:
+        """A reply built from this member's profile, or "" for the general one.
+
+        Each answer shape is its own function returning "" when it has nothing
+        to say, so the topics are tried in order and the first one that can
+        answer does.
+        """
         facts = _facts(system)
         if not facts.has_anything:
             return ""
-        profile = facts.profile
-        record = _record_sentence(facts)
 
-        if any(word in lowered for word in _EXPERIENCE_TOPIC):
-            held = _joined(profile.credentials) if profile.credentials else None
-            studied = _joined(facts.education) if facts.education else None
-            worked = _joined(facts.experience) if facts.experience else None
-            pieces = [
-                text
-                for text in (
-                    f"credentials: {held}" if held else None,
-                    f"education: {studied}" if studied else None,
-                    f"experience: {worked}" if worked else None,
-                    f"training: {_joined(facts.training_only)}" if facts.training_only else None,
-                )
-                if text
-            ]
-            missing = " Add anything missing in My profile and I will use it from then on."
-            return "Your profile currently lists " + "; ".join(pieces) + "." + missing
-
-        if any(word in lowered for word in _DEGREE_TOPIC):
-            degrees = _next_steps(profile, ("DEGREE", "PROGRAM"))
-            if degrees:
-                return (
-                    f"{record} {degrees} Military training is often reviewed for credit, "
-                    "so ask the school for a credit evaluation before you enrol. A credential "
-                    "first and a degree part time afterwards is a common order."
-                )
-
-        if any(word in lowered for word in _CREDENTIAL_TOPIC + _NEXT_STEP_TOPIC):
-            steps = _next_steps(profile, ("CERTIFICATION", "LICENSE"))
-            if not steps:
-                steps = _next_steps(profile)
-            if steps:
-                return (
-                    f"{record} {steps} Compare the published objectives against what you "
-                    "have already covered before booking an exam, and a counsellor can go "
-                    "through funding options with you."
-                )
-
-        if any(word in lowered for word in _RESUME_TOPIC):
-            lines = ["Lead with what you were responsible for rather than your job title."]
-            if facts.experience:
-                lines.append(
-                    f"Put {_joined(facts.experience)} at the top, each with the scope you "
-                    "handled and the people or systems you were accountable for."
-                )
-            items = facts.training_only[:3] + profile.credentials[:2]
-            if items:
-                lines.append(
-                    f"List {_joined(items)} by what each taught you, not by course number."
-                )
-            if profile.credentials:
-                lines.append("Credentials belong in their own section near the top.")
-            return " ".join(lines)
+        for topic, compose in self._ANSWERS:
+            if any(word in lowered for word in topic):
+                reply = compose(facts)
+                if reply:
+                    return reply
         return ""
 
     @staticmethod
