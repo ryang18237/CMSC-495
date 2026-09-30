@@ -1,19 +1,35 @@
-"""Deterministic provider used for local development, CI and demos.
+"""Built-in advisor -- the provider that needs no API key.
 
-No network, no API key, no cost -- which is what lets the pipeline exercise the
-whole conversation path on every push. It implements exactly the same interface
-as a managed provider, so swapping the real one in changes no caller.
+OWNER: Benjamin Madden (Integration Lead)
 
-Routing is keyword based, the way a real model's behaviour is topic driven,
-so the demo exercises the same branches: an answer, a decline and a provider
-failure. The answers are not canned any more, though. The mock reads the member
-facts in the prompt -- the same facts a real model receives, already minimised
-by the Customer Data Adapter -- and builds its reply from them, using the
-pathway recommender for "what next" questions. So two members, or one member
-before and after updating My record, get different answers.
+This is the default, and it is a real feature rather than a placeholder. A
+member can install the platform and get useful, personal answers with nothing
+to sign up for and no key to paste anywhere. Claude and ChatGPT are upgrades
+on top of it, configured once by whoever runs the server (ADR 0009).
+
+How it answers
+--------------
+It reads the member facts in the prompt -- the same minimised facts a managed
+model receives, produced by the Customer Data Adapter -- and composes a reply
+from them, asking the pathway recommender which next steps actually follow
+from that profile. Nothing is canned: two members get different answers, and
+one member gets a different answer after adding a degree or a job to their
+profile.
+
+What it is not
+--------------
+It does not understand free text the way a language model does. It routes on
+topic keywords and declines anything it does not recognise, which becomes an
+`UNSUPPORTED_TOPIC` escalation to a human counsellor -- the same safe ending
+a managed model gets when it is out of its depth. That is the honest trade:
+no key, no cost, no data leaving the process, narrower coverage.
+
+Being deterministic is also what lets CI exercise the whole conversation path
+on every push with no key and no spend.
 """
 
 import re
+from dataclasses import dataclass
 
 from app.modules.ai_integration.contracts import AIProviderError, Prompt, ProviderResponse
 from app.modules.ai_integration.providers.base import AIProvider
@@ -76,12 +92,13 @@ _TOPIC_REPLIES: list[tuple[tuple[str, ...], str]] = [
 ]
 
 
-MODEL = "mock-skillbridge-v2"
+MODEL = "skillbridge-advisor-v3"
 
 _CREDENTIAL_TOPIC = ("certification", "certificate", "credential", "license", "exam", "comptia")
 _NEXT_STEP_TOPIC = ("career", "job", "next step", "what should i do", "options", "path")
 _DEGREE_TOPIC = ("degree", "college", "university", "tuition", "school", "associate", "bachelor")
 _RESUME_TOPIC = ("resume", "cv", "interview", "hiring", "employer", "civilian", "translate")
+_EXPERIENCE_TOPIC = ("experience", "background", "what have i", "my profile", "qualified")
 
 
 def _fact(system: str, label: str) -> list[str]:
@@ -98,22 +115,67 @@ def _joined(items: list[str]) -> str:
     return ", ".join(items[:-1]) + " and " + items[-1]
 
 
-def _profile(system: str) -> MemberProfile:
+@dataclass(frozen=True)
+class _Facts:
+    """Everything the prompt was permitted to carry about this member.
+
+    `profile` is the subset the recommender ranks against; education and
+    experience are kept separately because they answer different questions --
+    a degree already held changes what to study next, and a job title is what
+    a resume question is really about.
+    """
+
+    profile: MemberProfile
+    education: list[str]
+    experience: list[str]
+
+    @property
+    def training_only(self) -> list[str]:
+        """Training without the education folded in for ranking."""
+        return [item for item in self.profile.completed_training if item not in self.education]
+
+    @property
+    def has_anything(self) -> bool:
+        return bool(
+            self.profile.credentials
+            or self.profile.completed_training
+            or self.education
+            or self.experience
+        )
+
+
+def _facts(system: str) -> _Facts:
     specialty = _fact(system, "Occupational specialty")
-    return MemberProfile(
-        completed_training=_fact(system, "Completed training"),
-        credentials=_fact(system, "Credentials already held"),
-        occupational_specialty=specialty[0] if specialty else None,
+    education = _fact(system, "Education")
+    return _Facts(
+        profile=MemberProfile(
+            # Study already finished counts as completed training when ranking
+            # what to do next: a degree is as much a prerequisite as a course.
+            completed_training=_fact(system, "Completed training") + education,
+            credentials=_fact(system, "Credentials already held"),
+            occupational_specialty=specialty[0] if specialty else None,
+        ),
+        education=education,
+        experience=_fact(system, "Experience"),
     )
 
 
-def _record_sentence(profile: MemberProfile) -> str:
+def _record_sentence(facts: _Facts) -> str:
+    """One sentence back to the member about what their profile says.
+
+    Kept to the two most relevant kinds per answer; listing four would bury
+    the advice under a recital of their own history.
+    """
     parts = []
-    if profile.credentials:
-        parts.append(f"you already hold {_joined(profile.credentials)}")
-    if profile.completed_training:
-        parts.append(f"you have completed {_joined(profile.completed_training)}")
-    return ("Looking at your record, " + " and ".join(parts) + ".") if parts else ""
+    if facts.profile.credentials:
+        parts.append(f"you already hold {_joined(facts.profile.credentials)}")
+    if facts.education:
+        parts.append(f"you have studied {_joined(facts.education)}")
+    if facts.training_only and len(parts) < 2:
+        parts.append(f"you have completed {_joined(facts.training_only)}")
+    if facts.experience and len(parts) < 2:
+        parts.append(f"you have worked as {_joined(facts.experience)}")
+    return ("Looking at your profile, " + " and ".join(parts) + ".") if parts else ""
 
 
 def _next_steps(profile: MemberProfile, kinds: tuple[str, ...] | None = None) -> str:
@@ -139,8 +201,8 @@ def _next_steps(profile: MemberProfile, kinds: tuple[str, ...] | None = None) ->
     return f"The closest next steps from that are {described[0]}; and {described[1]}."
 
 
-class MockAIProvider(AIProvider):
-    name = "mock"
+class BuiltInAdvisor(AIProvider):
+    name = "builtin"
 
     def generate(self, prompt: Prompt) -> ProviderResponse:
         # The newest customer turn is always last; earlier turns are history.
@@ -173,11 +235,29 @@ class MockAIProvider(AIProvider):
 
     @staticmethod
     def _personal_reply(system: str, lowered: str) -> str:
-        """A reply built from this member's record, or "" to use the general one."""
-        profile = _profile(system)
-        record = _record_sentence(profile)
-        if not record:
+        """A reply built from this member's profile, or "" for the general one."""
+        facts = _facts(system)
+        if not facts.has_anything:
             return ""
+        profile = facts.profile
+        record = _record_sentence(facts)
+
+        if any(word in lowered for word in _EXPERIENCE_TOPIC):
+            held = _joined(profile.credentials) if profile.credentials else None
+            studied = _joined(facts.education) if facts.education else None
+            worked = _joined(facts.experience) if facts.experience else None
+            pieces = [
+                text
+                for text in (
+                    f"credentials: {held}" if held else None,
+                    f"education: {studied}" if studied else None,
+                    f"experience: {worked}" if worked else None,
+                    f"training: {_joined(facts.training_only)}" if facts.training_only else None,
+                )
+                if text
+            ]
+            missing = " Add anything missing in My profile and I will use it from then on."
+            return "Your profile currently lists " + "; ".join(pieces) + "." + missing
 
         if any(word in lowered for word in _DEGREE_TOPIC):
             degrees = _next_steps(profile, ("DEGREE", "PROGRAM"))
@@ -200,12 +280,20 @@ class MockAIProvider(AIProvider):
                 )
 
         if any(word in lowered for word in _RESUME_TOPIC):
-            items = profile.completed_training[:3] + profile.credentials[:2]
-            return (
-                f"Lead with what you were responsible for rather than your job title. List "
-                f"{_joined(items)} by what each taught you, not by course number, and put "
-                "credentials in their own section near the top."
-            )
+            lines = ["Lead with what you were responsible for rather than your job title."]
+            if facts.experience:
+                lines.append(
+                    f"Put {_joined(facts.experience)} at the top, each with the scope you "
+                    "handled and the people or systems you were accountable for."
+                )
+            items = facts.training_only[:3] + profile.credentials[:2]
+            if items:
+                lines.append(
+                    f"List {_joined(items)} by what each taught you, not by course number."
+                )
+            if profile.credentials:
+                lines.append("Credentials belong in their own section near the top.")
+            return " ".join(lines)
         return ""
 
     @staticmethod

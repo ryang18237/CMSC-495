@@ -17,7 +17,7 @@ from app.modules.ai_integration.contracts import (
 )
 from app.modules.ai_integration.providers.anthropic_provider import AnthropicProvider
 from app.modules.ai_integration.providers.base import AIProvider
-from app.modules.ai_integration.providers.mock import MockAIProvider
+from app.modules.ai_integration.providers.builtin import MODEL, BuiltInAdvisor
 from app.modules.ai_integration.providers.openai_provider import OpenAIProvider
 
 FALLBACK_MESSAGE = (
@@ -56,13 +56,23 @@ def shutdown() -> None:
     reset_shared_http_client()
 
 
-# Every provider the platform knows, with the name a member sees. The mock is
-# always available so the platform works with no key at all.
+# Every provider the platform knows, with the name a member sees. The built-in
+# advisor needs no key and is therefore always available, which is what lets
+# the platform be installed and used with no sign-ups and nothing to configure.
 _PROVIDERS: dict[str, tuple[str, type[AIProvider]]] = {
+    "builtin": ("Built-in advisor", BuiltInAdvisor),
     "anthropic": ("Claude", AnthropicProvider),
     "openai": ("ChatGPT", OpenAIProvider),
-    "mock": ("Demo assistant (no AI key)", MockAIProvider),
 }
+
+# `mock` was this provider's name while it was a test double. Configuration
+# files and CI still say it, so it keeps working.
+_ALIASES = {"mock": "builtin", "": "builtin"}
+
+
+def _canonical(name: str) -> str:
+    cleaned = name.strip().lower()
+    return _ALIASES.get(cleaned, cleaned)
 
 
 @dataclass(frozen=True)
@@ -74,9 +84,13 @@ class ProviderOption:
 
 
 def build_provider(name: str | None = None) -> AIProvider:
-    """Provider factory. Selection is configuration, or a member's choice."""
-    selected = (name or get_settings().ai_provider).strip().lower()
-    _, provider_class = _PROVIDERS.get(selected, _PROVIDERS["mock"])
+    """Provider factory. Selection is configuration, or a member's choice.
+
+    An unknown name falls back to the built-in advisor rather than failing:
+    a typo in configuration should degrade the answers, not the platform.
+    """
+    selected = _canonical(name or get_settings().ai_provider)
+    _, provider_class = _PROVIDERS.get(selected, _PROVIDERS["builtin"])
     return provider_class()
 
 
@@ -85,7 +99,7 @@ def _model_for(provider_id: str) -> str:
     return {
         "anthropic": settings.anthropic_model,
         "openai": settings.openai_model,
-    }.get(provider_id, "mock-skillbridge-v2")
+    }.get(provider_id, MODEL)
 
 
 def available_providers() -> list[ProviderOption]:
@@ -99,8 +113,8 @@ def available_providers() -> list[ProviderOption]:
         for provider_id, (_, provider_class) in _PROVIDERS.items()
         if provider_class().health() == "ok"
     ]
-    configured = get_settings().ai_provider.strip().lower()
-    default = configured if configured in ready else "mock"
+    configured = _canonical(get_settings().ai_provider)
+    default = configured if configured in ready else "builtin"
     return [
         ProviderOption(
             provider_id=provider_id,
@@ -113,7 +127,8 @@ def available_providers() -> list[ProviderOption]:
 
 
 def is_available(provider_id: str) -> bool:
-    return any(option.provider_id == provider_id for option in available_providers())
+    wanted = _canonical(provider_id)
+    return any(option.provider_id == wanted for option in available_providers())
 
 
 class AIIntegrationService:

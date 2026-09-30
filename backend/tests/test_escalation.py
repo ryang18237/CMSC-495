@@ -4,7 +4,7 @@ import uuid
 
 from fastapi.testclient import TestClient
 
-from app.modules.ai_integration.providers.mock import FAILURE_TRIGGER
+from app.modules.ai_integration.providers.builtin import FAILURE_TRIGGER
 
 
 def _send(client: TestClient, auth: dict[str, str], conversation_id: str, text: str) -> dict:

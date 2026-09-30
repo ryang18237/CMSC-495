@@ -38,7 +38,7 @@ def build_document() -> str:
     # are still loaded when the app is created. These defaults keep the export
     # runnable on a clean checkout; real values in the environment win.
     os.environ.setdefault("JWT_SECRET", "openapi-export-only-not-a-real-secret-value")
-    os.environ.setdefault("AI_PROVIDER", "mock")
+    os.environ.setdefault("AI_PROVIDER", "builtin")
     os.environ.setdefault("AUTO_BOOTSTRAP", "false")
 
     sys.path.insert(0, str(BACKEND))

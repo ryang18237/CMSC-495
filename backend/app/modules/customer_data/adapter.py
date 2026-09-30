@@ -83,6 +83,19 @@ _INQUIRY_FIELDS: dict[str, tuple[str, ...]] = {
     ),
     # "When should I start an internship?" -- needs timing, not the lists.
     "TRANSITION": ("service_branch", "years_of_service", "separation_date"),
+    # "What do you have on file for me?" -- the member asking to see their own
+    # profile back. Everything they entered themselves is fair game; the one
+    # field withheld is the separation date, which they did not enter and
+    # which no answer of this kind needs.
+    "PROFILE": (
+        "service_branch",
+        "occupational_specialty",
+        "years_of_service",
+        "completed_training",
+        "credentials",
+        "education",
+        "experience",
+    ),
     "GENERAL": ("service_branch",),
 }
 
@@ -170,6 +183,30 @@ def classify_inquiry(message: str) -> str:
     categories are checked first.
     """
     lowered = message.lower()
+
+    # Asked before anything else: a member asking what the platform knows
+    # about them is asking about their own profile, whatever else the
+    # sentence happens to mention.
+    profile_words = (
+        "my profile",
+        "on file",
+        "my record",
+        "what do you know about me",
+        "what have i",
+        "my background",
+        "my experience",
+        "my qualifications",
+    )
+    if any(word in lowered for word in profile_words):
+        return "PROFILE"
+
+    # Weighing a degree against a credential is an education question even
+    # though it says "certification", so this pair is checked before the
+    # credential words below.
+    if ("degree" in lowered or "college" in lowered) and any(
+        word in lowered for word in ("certification", "certificate", "credential")
+    ):
+        return "EDUCATION"
 
     credential_words = (
         "certification",

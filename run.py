@@ -885,7 +885,7 @@ def main() -> int:
         # Checks run against the configured database, exactly as CI does.
         database_url, _ = resolve_database(python, args)
         env["DATABASE_URL"] = database_url
-        env["AI_PROVIDER"] = env.get("AI_PROVIDER", "mock")
+        env["AI_PROVIDER"] = env.get("AI_PROVIDER", "builtin")
         return run_checks(python, env, args)
 
     database_url, label = resolve_database(python, args)

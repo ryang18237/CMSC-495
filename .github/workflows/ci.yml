@@ -42,7 +42,7 @@ jobs:
       JWT_SECRET: ci-only-secret-value-long-enough-for-hs256-signing
       # CI never calls a paid model provider. The mock provider implements the
       # same interface, so the full conversation path is still exercised.
-      AI_PROVIDER: mock
+      AI_PROVIDER: builtin
       ENVIRONMENT: ci
       # The pipeline prepares the database as an explicit, visible step rather
       # than relying on the convenience bootstrap used for local runs.
@@ -144,7 +144,7 @@ jobs:
     env:
       DATABASE_URL: postgresql+psycopg://csp:csp@localhost:5432/csp
       JWT_SECRET: ci-only-secret-value-long-enough-for-hs256-signing
-      AI_PROVIDER: mock
+      AI_PROVIDER: builtin
       ENVIRONMENT: ci
       # The pipeline prepares the database as an explicit, visible step rather
       # than relying on the convenience bootstrap used for local runs.

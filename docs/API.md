@@ -142,7 +142,7 @@ Authentication failures return **401**.
 | `status` | Enum | `ANSWERED`, `ESCALATED` or `ERROR` |
 | `escalationReason` | Enum \| null | Null unless escalation occurs |
 | `timestamp` | ISO 8601 | UTC |
-| `answeredBy` | String \| null | Provider that answered (`anthropic`, `openai`, `mock`); null when escalated |
+| `answeredBy` | String \| null | Provider that answered (`builtin`, `anthropic`, `openai`); null when escalated |
 
 **Escalation is rule-based, not confidence-based.** The application does not
 use an undefined numeric AI confidence score. `status` becomes `ESCALATED`
@@ -395,20 +395,23 @@ cannot be probed.
 
 ## GET /api/v1/ai/providers
 
-Any signed-in user. Lists the models a member can pick in the chat: every
-provider this server has a key for, plus the demo assistant, which needs none.
-Keys are never returned — only a name and a model id.
+Any signed-in user. Lists the models a member can pick in the chat: the
+built-in advisor, which needs no key and is therefore always present, plus
+every managed provider this server has a key for. **Keys are never returned**
+— only a name and a model id — and a member is never asked for one.
 
 ```json
 [
+  { "providerId": "builtin", "label": "Built-in advisor", "model": "skillbridge-advisor-v3", "isDefault": false },
   { "providerId": "anthropic", "label": "Claude", "model": "claude-haiku-4-5-20251001", "isDefault": true },
-  { "providerId": "openai", "label": "ChatGPT", "model": "gpt-6-luna", "isDefault": false },
-  { "providerId": "mock", "label": "Demo assistant (no AI key)", "model": "mock-skillbridge-v2", "isDefault": false }
+  { "providerId": "openai", "label": "ChatGPT", "model": "gpt-6-luna", "isDefault": false }
 ]
 ```
 
-`isDefault` marks the provider used when a message names none: `AI_PROVIDER`
-if its key is set, otherwise the demo assistant.
+On a server with no keys configured the list holds `builtin` alone, and the
+platform is fully usable. `isDefault` marks the provider used when a message
+names none: `AI_PROVIDER` when its key is set, otherwise the built-in advisor.
+`mock` is accepted as the old name for `builtin`.
 
 ---
 

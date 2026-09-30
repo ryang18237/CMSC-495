@@ -69,7 +69,11 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173"
 
     # AI Integration Module
-    ai_provider: str = "mock"
+    # "builtin" needs no key and is fully functional, so the platform works
+    # out of the box. "anthropic" and "openai" are upgrades the operator
+    # configures once; a member is never asked for a key. ("mock" is accepted
+    # as the old name for "builtin".)
+    ai_provider: str = "builtin"
     anthropic_api_key: str = ""
     # A dated model id, so a demonstration is reproducible (peer review).
     anthropic_model: str = "claude-haiku-4-5-20251001"

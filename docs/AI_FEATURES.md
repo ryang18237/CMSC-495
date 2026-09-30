@@ -2,18 +2,19 @@
 
 **Owner:** Benjamin Madden (Integration Lead)
 
-SkillBridge AI has two AI features, and lets the member choose which model
-answers. They solve different problems and fail in
+SkillBridge AI has two AI features. Both work with no API key, no account and
+nothing to configure — Claude and ChatGPT are optional upgrades whoever runs
+the server can add. The two features solve different problems and fail in
 different ways, so they are built differently on purpose.
 
 | | Conversational assistant | Pathway recommender |
 | --- | --- | --- |
 | What the member sees | Answers to free-text questions in the chat | "Recommended next steps" panel beside the chat |
-| Technique | Large language model behind a provider interface | Content-based filtering: TF-IDF vectors and cosine similarity |
-| Needs an API key | For Claude or ChatGPT; a record-aware demo assistant answers without one | No |
-| Deterministic | No | Yes — same record, same list |
+| Technique | A provider interface: a rule-based advisor in process, or a managed language model | Content-based filtering: TF-IDF vectors and cosine similarity |
+| Needs an API key | No — the built-in advisor answers. Claude and ChatGPT are optional | No |
+| Deterministic | Yes on the built-in advisor, no on a managed model | Yes — same profile, same list |
 | When it fails | Escalates to a counsellor with `AI_SERVICE_FAILURE` | Falls back to general starting points |
-| Code | `app/modules/ai_integration/service.py`, `providers/` | `app/modules/ai_integration/recommender.py`, `data/pathways.json` |
+| Code | `providers/builtin.py`, `providers/anthropic_provider.py`, `providers/openai_provider.py` | `recommender.py` |
 | Endpoint | `POST /api/v1/conversations/{id}/messages` | `GET /api/v1/pathways/recommended` |
 
 Both live inside the AI Integration Module and obey its boundary: neither
@@ -54,41 +55,68 @@ to contain only `model`, `max_tokens`, `system` and `messages`:
 
 No member name, email, member number or identifier is ever included.
 
-### Providers and the member's choice
+### Three providers, no key required
 
-Three providers sit behind the same `AIProvider` interface. Everything that
-keeps the assistant safe — minimised prompts, the retry budget, response
-validation, the handover to a counsellor — lives in `AIIntegrationService`, so
-it applies identically whichever one answers.
+The platform works the moment it is installed. Nobody signs up for anything,
+and **no member is ever asked for an API key** — there is nowhere in the
+interface to enter one, by design.
 
-| Provider id | Member sees | Needs | Endpoint called |
+| Provider id | Member sees | Needs | Runs |
 | --- | --- | --- | --- |
+| `builtin` | Built-in advisor | nothing | in process, offline |
 | `anthropic` | Claude | `ANTHROPIC_API_KEY` | Anthropic Messages API |
 | `openai` | ChatGPT | `OPENAI_API_KEY` | OpenAI Chat Completions |
-| `mock` | Demo assistant (no AI key) | nothing | none — runs in process |
 
-`GET /api/v1/ai/providers` lists only the providers this server has a key for,
-plus the demo assistant. When more than one is available, the chat shows a
-**Model** picker and sends the chosen id with each message; the reply says
-which one answered. A provider without a key can never be selected — the API
-refuses it with `422 AI_PROVIDER_UNAVAILABLE` — and **no key ever leaves the
-server**: the browser only ever sees a name and a model id.
+`builtin` is the default and is always available. Claude and ChatGPT are
+upgrades that **whoever runs the server** configures once, in
+`backend/.env`; every member of that server then benefits without touching a
+key. `GET /api/v1/ai/providers` lists only what the server can actually
+reach, the chat shows a **Model** picker when there is more than one, and each
+message carries a provider **id** — never a credential. A provider without a
+key can never be selected: the API refuses it with
+`422 AI_PROVIDER_UNAVAILABLE`.
 
-`AI_PROVIDER` sets the default, used when a message names none and when it has
-a key; otherwise the default is the demo assistant.
+### The built-in advisor
 
-### Getting a key
+Not a placeholder. It reads the member's profile — credentials, training,
+education, experience, all minimised by the Customer Data Adapter exactly as
+they would be for a managed model — and composes an answer, asking the pathway
+recommender which next steps actually follow. Two members get different
+answers, and the same member gets a different answer after adding a degree or
+a job:
 
-Each team member uses **their own** key, in **their own** `backend/.env`,
-which git ignores. Never share a key in the repository, a chat or a commit.
+> Looking at your profile, you already hold CompTIA A+ and you have studied
+> Associate of Applied Science in Network Systems (Central Texas College). The
+> closest next steps from that are CompTIA Network+, the natural step after
+> CompTIA A+; and Cisco Certified Network Associate (CCNA), which builds on
+> Network Administration Course. …
+
+**What it does well.** Personal, instant, free, deterministic, and nothing
+about the member leaves the process. It answers the questions the platform
+exists for: what to do next, degree or credential, how to describe this on a
+resume, what is on my profile.
+
+**What it does not do.** It does not understand free text the way a language
+model does. It routes on topic and declines anything it does not recognise,
+which becomes an `UNSUPPORTED_TOPIC` handover to a counsellor — the same safe
+ending a managed model gets when it is out of its depth. A member asking
+something unusual reaches a person instead of getting a guess.
+
+Being deterministic is also what lets CI exercise the whole conversation path
+on every push with no key and no spend.
+
+### Adding Claude or ChatGPT
+
+Optional. Do this when you want free-text understanding beyond the advisor's
+topics. It is a **server** setting; members see the new option appear.
 
 **Claude (Anthropic)**
 
 1. Sign in at <https://console.anthropic.com>.
-2. Add credits under **Billing** — the API is pay-as-you-go and separate from
-   a Claude.ai subscription.
+2. Add credits under **Billing**. API usage is pay-as-you-go and separate
+   from a Claude.ai subscription.
 3. **API Keys → Create Key**. Copy it once; it is not shown again.
-4. Optional but recommended: set a monthly spend limit.
+4. Set a monthly spend limit while you are developing.
 
 **ChatGPT (OpenAI)**
 
@@ -96,46 +124,41 @@ which git ignores. Never share a key in the repository, a chat or a commit.
 2. Add a payment method under **Billing**. A ChatGPT Plus subscription does
    **not** include API usage; the two are billed separately.
 3. **API keys → Create new secret key**. Copy it once.
-4. Optional but recommended: set a usage limit for the project.
+4. Set a usage limit for the project.
 
-Then, in `backend/.env`:
+Then, in `backend/.env` on the machine running the server:
 
 ```bash
 # backend/.env -- git-ignored, never committed
-AI_PROVIDER=anthropic                       # the default model
-ANTHROPIC_API_KEY=sk-ant-...                # your own key, if you have one
+AI_PROVIDER=anthropic                       # or openai, or builtin
+ANTHROPIC_API_KEY=sk-ant-...
 ANTHROPIC_MODEL=claude-haiku-4-5-20251001
-OPENAI_API_KEY=sk-...                       # your own key, if you have one
+OPENAI_API_KEY=sk-...
 OPENAI_MODEL=gpt-6-luna
 ```
 
-Restart `python run.py`. `/api/v1/health` shows the default provider, and the
-chat shows the picker once two or more are available.
+Restart `python run.py`. `/api/v1/health` reports the default provider, and
+the picker appears once two or more are available.
 
-**Model versions.** Defaults are dated or specific model ids so a demonstration
-is reproducible. Check the current model lists on each provider's site and set
-`ANTHROPIC_MODEL` / `OPENAI_MODEL` if a default has been retired.
+### Which to run, and when
 
-**If a key leaks,** revoke it in that console at once and create a new one.
-Deleting the commit does not help — the key stays in git history. A key is
-read at startup, so a new one takes effect after a restart.
+| Situation | Recommendation |
+| --- | --- |
+| Demonstration, grading, a teammate cloning the repo | **Built-in advisor.** Nothing to configure, nothing to spend, identical for everyone. |
+| One person showing real Claude or ChatGPT answers | That person puts **their own** key in their own `.env` and runs the demo on their machine. Nobody else needs a copy. |
+| A deployed instance for real members | One key held by the deployment, in the host's secret store — never in the repository. Members still never see it. |
+| CI | **Built-in advisor**, always. No secret to leak, repeatable results, no bill. |
 
-### The demo assistant
+Never share one key between people by committing it: a private repository is
+private from the public, not between collaborators, and a committed key stays
+in git history after it is deleted. Each person uses their own.
 
-With no key the demo assistant answers — and it answers from the member's own
-record, not from canned text. It reads the same minimised facts a real model
-would receive (training completed, credentials held, specialty), asks the
-pathway recommender for the closest next steps, and builds the reply from
-them. Two members get different answers, and one member gets a different
-answer after adding something to **My record**:
+**Model versions.** Defaults are dated or specific ids so a demonstration is
+reproducible. Check each provider's current model list and update
+`ANTHROPIC_MODEL` / `OPENAI_MODEL` if a default is retired.
 
-> Looking at your record, you already hold CompTIA A+ and CompTIA Security+
-> and you have completed Basic Leader Course, Network Administration Course
-> and Information Assurance Fundamentals. The closest next steps from that are
-> CompTIA Network+, the natural step after CompTIA A+; and CompTIA
-> Cybersecurity Analyst (CySA+), the natural step after CompTIA Security+. …
-
-It is still deterministic, so tests and CI can rely on it.
+**If a key leaks,** revoke it in that console immediately and create a new
+one. A key is read at startup, so a replacement takes effect after a restart.
 
 ### Failure handling
 
@@ -185,11 +208,13 @@ application shuts down.
 
 ### Why a second, non-LLM feature
 
-The assistant only works properly with a key, and the people grading this
-project will not have one. The recommender gives every member a real,
-personalised AI result with nothing to configure, and it keeps working when
-the model provider is down. It is also the direct expression of what the
-platform is for: insight based on what a member has already done.
+Ranking is not a language problem. "What should I do next?" is a question
+about how close each pathway is to what a member has already finished, and
+that is answered better — and provably, and in milliseconds — by comparing
+the two directly than by asking a model to guess. It also keeps working when
+a model provider is down, and it is the engine the built-in advisor uses to
+answer without a key at all. It is the direct expression of what the platform
+is for: insight based on what a member has already done.
 
 ### Method
 

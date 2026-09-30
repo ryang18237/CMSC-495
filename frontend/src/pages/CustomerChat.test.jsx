@@ -103,7 +103,7 @@ describe('CustomerChat', () =>
   {
     vi.spyOn(api, 'createConversation').mockResolvedValue({ conversationId: 'conv-10' })
     vi.spyOn(api, 'listProviders').mockResolvedValue([
-      { providerId: 'mock', label: 'Demo assistant (no AI key)', model: 'mock', isDefault: true },
+      { providerId: 'builtin', label: 'Built-in advisor', model: 'skillbridge-advisor-v3', isDefault: true },
     ])
     render(<CustomerChat session={session} />)
     await waitFor(() => expect(api.listProviders).toHaveBeenCalled())

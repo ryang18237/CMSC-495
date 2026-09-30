@@ -13,12 +13,13 @@ from fastapi.testclient import TestClient
 
 from app.config import get_settings
 from app.modules.ai_integration.contracts import AIProviderError, Prompt
-from app.modules.ai_integration.providers.mock import MockAIProvider
+from app.modules.ai_integration.providers.builtin import BuiltInAdvisor
 from app.modules.ai_integration.providers.openai_provider import MAX_TOKENS, OpenAIProvider
 from app.modules.ai_integration.service import (
     AIIntegrationService,
     available_providers,
     build_provider,
+    is_available,
 )
 
 PROMPT = Prompt(
@@ -132,9 +133,9 @@ def test_without_a_key_it_is_unavailable_and_never_calls_out():
 # Which providers are offered
 # ---------------------------------------------------------------------------
 @pytest.mark.usefixtures("no_keys")
-def test_with_no_keys_only_the_demo_assistant_is_offered():
+def test_with_no_keys_only_the_builtin_advisor_is_offered():
     options = available_providers()
-    assert [option.provider_id for option in options] == ["mock"]
+    assert [option.provider_id for option in options] == ["builtin"]
     assert options[0].is_default
 
 
@@ -143,14 +144,14 @@ def test_a_provider_is_offered_once_its_key_is_set(monkeypatch):
     monkeypatch.setattr(get_settings(), "openai_api_key", "sk-openai-test")
     monkeypatch.setattr(get_settings(), "ai_provider", "anthropic")
     options = {option.provider_id: option for option in available_providers()}
-    assert set(options) == {"anthropic", "openai", "mock"}
+    assert set(options) == {"anthropic", "openai", "builtin"}
     assert options["anthropic"].is_default
     assert options["openai"].label == "ChatGPT"
 
 
 def test_factory_builds_each_provider():
     assert isinstance(build_provider("openai"), OpenAIProvider)
-    assert isinstance(build_provider("unknown"), MockAIProvider)
+    assert isinstance(build_provider("unknown"), BuiltInAdvisor)
 
 
 @pytest.mark.usefixtures("no_keys")
@@ -158,7 +159,7 @@ def test_providers_endpoint_never_exposes_a_key(client: TestClient, customer_aut
     monkeypatch.setattr(get_settings(), "openai_api_key", "sk-openai-secret-value")
     response = client.get("/api/v1/ai/providers", headers=customer_auth)
     assert response.status_code == 200
-    assert {item["providerId"] for item in response.json()} == {"openai", "mock"}
+    assert {item["providerId"] for item in response.json()} == {"openai", "builtin"}
     assert "sk-openai-secret-value" not in response.text
 
 
@@ -215,7 +216,7 @@ def test_without_a_choice_the_default_answers(client: TestClient, customer_auth)
         headers=customer_auth,
         json={"message": "Which certification should I work toward next?"},
     ).json()
-    assert response["answeredBy"] == "mock"
+    assert response["answeredBy"] == "builtin"
 
 
 # ---------------------------------------------------------------------------
@@ -270,4 +271,70 @@ def test_personal_answers_still_pass_validation(client: TestClient, customer_aut
 
 
 def test_service_reports_which_provider_is_in_use():
-    assert AIIntegrationService(MockAIProvider()).provider_name == "mock"
+    assert AIIntegrationService(BuiltInAdvisor()).provider_name == "builtin"
+
+
+# ---------------------------------------------------------------------------
+# The built-in advisor: usable with no key at all
+# ---------------------------------------------------------------------------
+@pytest.mark.usefixtures("no_keys")
+def test_the_platform_answers_with_no_keys_configured(client: TestClient, customer_auth):
+    """The whole point: install it, sign in, get a personal answer. No setup."""
+    conversation = _conversation(client, customer_auth)
+    reply = client.post(
+        f"/api/v1/conversations/{conversation}/messages",
+        headers=customer_auth,
+        json={"message": "Which certification should I work toward next?"},
+    ).json()
+
+    assert reply["status"] == "ANSWERED"
+    assert reply["answeredBy"] == "builtin"
+    assert "CompTIA A+" in reply["response"]  # grounded in this member's record
+
+
+@pytest.mark.usefixtures("no_keys")
+def test_the_advisor_uses_education_and_experience(client: TestClient, customer_auth):
+    for item in (
+        {"kind": "EDUCATION", "name": "Associate of Applied Science", "organization": "CTC"},
+        {"kind": "EXPERIENCE", "name": "Help Desk Technician", "organization": "Fort Hood"},
+    ):
+        client.post("/api/v1/profile/record/items", headers=customer_auth, json=item)
+
+    resume = _ask(client, customer_auth, "How do I describe my training on a civilian resume?")
+    assert "Help Desk Technician" in resume
+
+    studied = _ask(client, customer_auth, "Should I do a degree or a certification first?")
+    assert "Associate of Applied Science" in studied
+
+
+@pytest.mark.usefixtures("no_keys")
+def test_the_advisor_can_read_back_the_profile(client: TestClient, customer_auth):
+    client.post(
+        "/api/v1/profile/record/items",
+        headers=customer_auth,
+        json={"kind": "EXPERIENCE", "name": "Help Desk Technician"},
+    )
+    answer = _ask(client, customer_auth, "What experience do I have on file?")
+    assert "Help Desk Technician" in answer
+    assert "My profile" in answer
+
+
+@pytest.mark.usefixtures("no_keys")
+def test_an_unrecognised_question_reaches_a_person_rather_than_being_guessed(
+    client: TestClient, customer_auth
+):
+    """The advisor's coverage is narrower than a model's, and it says so honestly."""
+    conversation = _conversation(client, customer_auth)
+    reply = client.post(
+        f"/api/v1/conversations/{conversation}/messages",
+        headers=customer_auth,
+        json={"message": "What is the capital of France?"},
+    ).json()
+    assert reply["status"] == "ESCALATED"
+    assert reply["escalationReason"] == "UNSUPPORTED_TOPIC"
+
+
+def test_the_old_mock_name_still_selects_the_advisor():
+    """Existing .env files and CI config say AI_PROVIDER=mock."""
+    assert isinstance(build_provider("mock"), BuiltInAdvisor)
+    assert is_available("mock")
