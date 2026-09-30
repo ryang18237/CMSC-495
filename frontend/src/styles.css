@@ -402,8 +402,10 @@ button.link {
 .record-review .record-list li { justify-content: flex-start; }
 .record-review label {
   display: flex;
-  align-items: baseline;
+  align-items: flex-start;
   gap: 8px;
   margin: 0;
   font-weight: normal;
+  flex: 1;
 }
+.record-review input[type='checkbox'] { margin-top: 3px; flex: none; }
