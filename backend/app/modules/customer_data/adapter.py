@@ -12,8 +12,10 @@ contract the rest of the platform depends on. Two things are going on here:
 """
 
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import cast
 
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
@@ -109,36 +111,45 @@ class CustomerContext:
     available_fields: list[str] = field(default_factory=list)
 
     def to_prompt_facts(self) -> list[str]:
-        """Render only the fields this context was permitted to expose."""
+        """Render only the fields this context was permitted to expose.
+
+        Driven by the table below rather than a run of `if` statements, so
+        adding a field is one row and the permission check can never be
+        forgotten for one of them.
+        """
         facts: list[str] = []
-
-        if "service_branch" in self.available_fields:
-            facts.append(f"Branch of service: {self.service_branch}")
-
-        if "occupational_specialty" in self.available_fields and self.occupational_specialty:
-            facts.append(f"Occupational specialty: {self.occupational_specialty}")
-
-        if "years_of_service" in self.available_fields and self.years_of_service is not None:
-            facts.append(f"Years of service: {self.years_of_service}")
-
-        if "separation_date" in self.available_fields and self.separation_date is not None:
-            facts.append(f"Separation date: {self.separation_date.date().isoformat()}")
-
-        # These two are the point of the platform: recommendations have to be
-        # anchored to what the member has actually finished.
-        if "completed_training" in self.available_fields and self.completed_training:
-            facts.append("Completed training: " + ", ".join(self.completed_training))
-
-        if "credentials" in self.available_fields and self.credentials:
-            facts.append("Credentials already held: " + ", ".join(self.credentials))
-
-        if "education" in self.available_fields and self.education:
-            facts.append("Education: " + ", ".join(self.education))
-
-        if "experience" in self.available_fields and self.experience:
-            facts.append("Experience: " + ", ".join(self.experience))
-
+        for name, label, render in _FACT_RENDERERS:
+            if name not in self.available_fields:
+                continue
+            value = getattr(self, name)
+            # Empty is not withheld, it is simply nothing to say.
+            if value in (None, "", []):
+                continue
+            facts.append(f"{label}: {render(value)}")
         return facts
+
+
+def _as_list(value: object) -> str:
+    return ", ".join(str(item) for item in cast(list[str], value))
+
+
+def _as_date(value: object) -> str:
+    return cast(datetime, value).date().isoformat()
+
+
+# (attribute, label, how to render it). The order is the order the facts reach
+# the provider, so the two the platform exists for come last and closest to
+# the question.
+_FACT_RENDERERS: tuple[tuple[str, str, Callable[[object], str]], ...] = (
+    ("service_branch", "Branch of service", str),
+    ("occupational_specialty", "Occupational specialty", str),
+    ("years_of_service", "Years of service", str),
+    ("separation_date", "Separation date", _as_date),
+    ("education", "Education", _as_list),
+    ("experience", "Experience", _as_list),
+    ("completed_training", "Completed training", _as_list),
+    ("credentials", "Credentials already held", _as_list),
+)
 
 
 # Returned when no personnel record matches. The assistant still works; it just
