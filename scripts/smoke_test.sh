@@ -29,8 +29,10 @@ STATUS=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/v1/profile/re
   -H "Authorization: Bearer $CUSTOMER_TOKEN" -H 'Content-Type: application/json' \
   -d '{"kind":"EXPERIENCE","name":"Help Desk Technician","organization":"Fort Hood"}')
 [ "$STATUS" = "201" ] || [ "$STATUS" = "409" ] || { echo "expected 201 or 409, got $STATUS"; exit 1; }
+# Look across the whole profile: a re-run leaves earlier items in place, so
+# the position of this one is not fixed.
 curl -sf -H "Authorization: Bearer $CUSTOMER_TOKEN" "$BASE/api/v1/profile/record" \
-  | json "['added'][0]['name']" | grep -qx "Help Desk Technician"
+  | json "['added']" | grep -q "Help Desk Technician"
 echo "saved to the member's profile"
 
 step "Assistant answers a supported question"
