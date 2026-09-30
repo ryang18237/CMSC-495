@@ -56,6 +56,8 @@ input {
   background: var(--surface);
   color: inherit;
 }
+/* A checkbox is not a text field: the 100% above would eat its whole row. */
+input[type='checkbox'] { width: auto; padding: 0; }
 input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 button {
@@ -399,7 +401,7 @@ button.link {
 .record-upload { display: grid; gap: 4px; margin-top: 10px; font-size: 13px; }
 .record-review { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px; }
 .record-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
-.record-review .record-list li { justify-content: flex-start; }
+.record-review .record-list li { justify-content: flex-start; min-width: 0; }
 .record-review label {
   display: flex;
   align-items: flex-start;
@@ -407,5 +409,7 @@ button.link {
   margin: 0;
   font-weight: normal;
   flex: 1;
+  min-width: 0;
 }
+.record-review label > span { min-width: 0; overflow-wrap: anywhere; }
 .record-review input[type='checkbox'] { margin-top: 3px; flex: none; }
