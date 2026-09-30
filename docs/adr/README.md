@@ -28,3 +28,6 @@ deleting it hides the reasoning.
 | [0004](0004-deterministic-escalation.md) | Escalation is rule-based, not confidence-based | Accepted |
 | [0005](0005-local-database-fallback.md) | SQLite is a local fallback; PostgreSQL is the data layer | Accepted |
 | [0006](0006-local-pathway-recommender.md) | Pathway recommendations are computed locally, not by the model | Accepted |
+| [0007](0007-member-maintained-record.md) | Members maintain their own record alongside the personnel system | Accepted |
+| [0008](0008-member-chooses-the-model.md) | Members choose the model; keys never leave the server | Accepted |
+| [0009](0009-usable-without-a-key.md) | The platform is fully usable with no API key | Accepted |

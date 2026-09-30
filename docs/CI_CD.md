@@ -58,14 +58,15 @@ over HTTP, exactly as a client would:
 
 1. Health check
 2. A member signs in and opens a conversation
-3. The assistant answers a supported question (`ANSWERED`)
-4. Feedback is recorded against that answer
-5. A request for a person escalates deterministically (`CUSTOMER_REQUEST`)
-6. A second member is refused the first member's conversation (**403**)
-7. A counsellor sees the escalated case with its context
-8. A member is refused the counsellor's case view (**403**)
-9. The counsellor replies, and the member sees the reply in the same conversation
-10. The counsellor resolves the case
+3. The member saves a job to My profile, and it is there when read back
+4. The assistant answers a supported question (`ANSWERED`)
+5. Feedback is recorded against that answer
+6. A request for a person escalates deterministically (`CUSTOMER_REQUEST`)
+7. A second member is refused the first member's conversation (**403**)
+8. A counsellor sees the escalated case with its context
+9. A member is refused the counsellor's case view (**403**)
+10. The counsellor replies, and the member sees the reply in the same conversation
+11. The counsellor resolves the case
 
 The Learning Analytics Worker then runs once against the data the smoke test
 produced.
@@ -97,8 +98,9 @@ name and route count.
 
 ## What the pipeline never does
 
-- **Call a paid model.** CI sets `AI_PROVIDER=mock`. The mock implements the
-  same interface, so the whole conversation path is still exercised.
+- **Call a paid model.** CI sets `AI_PROVIDER=builtin`. The built-in advisor
+  implements the same interface, so the whole conversation path is exercised
+  with no key, no network and no bill.
 - **Use a real secret.** The only credential is a throwaway JWT signing value
   that exists solely inside the runner.
 - **Touch real personal data.** Every account and service record is synthetic

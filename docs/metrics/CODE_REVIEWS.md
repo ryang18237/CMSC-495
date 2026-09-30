@@ -91,6 +91,12 @@ having the checks.
 | `recommend()` had cyclomatic complexity 29 | `scripts/quality_report.py` | Split into four helpers; output verified identical; CI limit set at 15 |
 | Frontend coverage 44.9%, counsellor screens untested | First coverage measurement | 19 tests added; 89.4% |
 | Sign-in p95 near the target at 25 concurrent clients | Benchmark | Recorded in the debt register with its cause (bcrypt cost on 2 CPUs) |
+| The five My record routes and their six error codes shipped undocumented in the first draft | `test_every_route_is_documented`, `test_every_error_code_is_documented` | Documented in `docs/API.md` before the branch was finished |
+| The upload parser (CC 16, 17) and the OpenAI response parser (CC 16) crossed the complexity limit | `quality_report.py --max-cc 15` | Each split into named steps in its owner's branch; tests unchanged |
+| The demo assistant gave every member the same canned answer | A member using the product | Replies now built from the member's record and the recommender |
+| Members had to restate education and work history in every conversation; the profile only held training and credentials | Using the product | Profile extended to four kinds with an organisation field; a whole resume imports at once |
+| The keyless path was called a "mock", so readers assumed the product needed a paid key to work at all | Usability review | Renamed the built-in advisor, made it the default, and taught it education and experience (ADR 0009) |
+| Three functions crossed the complexity limit as the profile and second provider landed | `quality_report.py --max-cc 15` | Prompt facts became table-driven; the advisor's answers and the upload parser split into named steps |
 | README's Windows prerequisites section cut off by a merge | Reading the rendered README | Rewritten; full setup moved to `docs/INSTALL.md` |
 
 ## Open items carried forward

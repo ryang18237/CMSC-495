@@ -60,6 +60,53 @@ Good questions to ask:
 The assistant will not enrol you in anything, apply on your behalf, or promise
 a job, a place or funding. It will point you to a counsellor for those.
 
+### Choosing the AI model
+
+You never need an API key, an account or any setup — the **built-in advisor**
+answers out of the box, using your profile, and costs nothing.
+
+If whoever runs your copy has added Claude or ChatGPT, a **Model** menu
+appears at the top of the chat and you can pick between them. Your choice
+applies to each message, and every answer says which model wrote it. You are
+never asked for a key: there is nowhere to enter one.
+
+The built-in advisor is deliberately narrow. It handles the questions this
+service is for — what to study or certify next, degree or credential, how to
+describe your background on a resume, what is on your profile. Anything else
+it hands to a counsellor rather than guessing.
+
+### My profile
+
+![My profile panel with an upload being reviewed](images/guide/08-my-record.png)
+
+**My profile** is everything the assistant knows about you, so you never have
+to repeat it in a new conversation.
+
+- **From your service record** is what the personnel system holds — military
+  training only. You can't edit it here.
+- Everything else you enter yourself, in four kinds:
+
+  | Kind | What goes in it |
+  | --- | --- |
+  | **Credential** | A certification or license — CompTIA Security+, an EMT license |
+  | **Education** | A degree, diploma or coursework |
+  | **Experience** | A job or role, military or civilian |
+  | **Training** | A course or school the service record missed |
+
+  Choose the kind, type the name, optionally add the issuer, school or
+  employer, and click **Add**. **Remove** takes an item off again.
+- **Upload a resume or transcript** reads a `.txt`, `.csv` or `.pdf` and lists
+  everything it recognised, sorted into those four kinds. Untick anything
+  wrong and click **Save**. Nothing is saved until you do, and the file itself
+  is never kept.
+- The bar at the top shows how complete your profile looks and names what is
+  still missing. It is a prompt, not a score — the assistant works at any
+  level of completeness.
+
+Changes take effect straight away: the next answer and the recommended next
+steps both use them. You can also just ask the assistant *"what do you have on
+file for me?"* to hear it back.
+
 ### Recommended next steps
 
 The panel beside the chat ranks civilian certifications, licenses, programs

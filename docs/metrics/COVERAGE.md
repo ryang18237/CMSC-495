@@ -8,28 +8,28 @@ uploads the full HTML reports as the `backend-coverage` and
 
 | Suite | Tests | Lines | Branches | Floor enforced in CI |
 | --- | ---: | ---: | ---: | --- |
-| Backend — pytest against PostgreSQL 16 | 187 | **94.3%** | **84.2%** | 90% combined (`.coveragerc`) |
-| Frontend — Vitest + Testing Library | 33 | **89.4%** | **86.2%** | 80% lines, 75% branches (`vite.config.js`) |
-| End-to-end — `scripts/smoke_test.sh` | 10 steps | — | — | Must pass |
+| Backend — pytest against PostgreSQL 16 | 236 | **94.4%** | **83.8%** | 90% combined (`.coveragerc`) |
+| Frontend — Vitest + Testing Library | 42 | **90.3%** | **85.9%** | 80% lines, 75% branches (`vite.config.js`) |
+| End-to-end — `scripts/smoke_test.sh` | 11 steps | — | — | Must pass |
 
-Backend combined line-and-branch coverage is 92.9%.
+Backend combined line-and-branch coverage is 92.8%.
 
 ## Backend, by component
 
 | Component | Lines | Branches |
 | --- | ---: | ---: |
 | Conversation Management | 99.0% | 94.4% |
-| Customer Data Adapter | 96.5% | 100.0% |
+| Customer Data Adapter | 93.8% | 87.8% |
 | Knowledge Base | 91.5% | 80.0% |
-| AI Integration | 96.9% | 90.9% |
+| AI Integration | 95.6% | 86.5% |
 | Response Validation | 96.2% | 90.9% |
 | Escalation | 95.5% | 81.6% |
 | Feedback | 97.2% | 100.0% |
 | Learning Analytics Worker | 80.9% | 45.5% |
 | Cache | 95.2% | 100.0% |
 | Monitoring | 93.6% | 66.7% |
-| API layer | 96.2% | 77.8% |
-| Shared (config, schemas, errors, security, data) | 92.5% | 78.0% |
+| API layer | 97.0% | 83.3% |
+| Shared (config, schemas, errors, security, data) | 93.3% | 78.0% |
 
 **Where coverage is thin, and why it matters or does not.** The Learning
 Analytics Worker is lowest: its tests drive the patterns the demo produces, but
@@ -47,10 +47,11 @@ database on startup — which the test run skips because CI supplies
 
 | File | Lines | Branches |
 | --- | ---: | ---: |
-| `App.jsx` | 91.2% | 88.2% |
-| `api/client.js` | 80.8% | 73.9% |
+| `App.jsx` | 91.8% | 88.2% |
+| `api/client.js` | 77.3% | 76.0% |
 | `api/agentHandoff.js`, `api/pathways.js` | 100% | 100% |
 | `components/LoginPanel.jsx` | 100% | 92.9% |
+| `components/MyRecordPanel.jsx` | 94.2% | 87.5% |
 | `components/PathwayRecommendations.jsx` | 100% | 89.5% |
 | `components/CounsellorReplyBox.jsx` | 97.0% | 92.3% |
 | `components/EscalationQueue.jsx` | 91.9% | 86.4% |
@@ -58,7 +59,7 @@ database on startup — which the test run skips because CI supplies
 | `components/OperationsPanel.jsx` | 94.5% | 83.3% |
 | `hooks/useCounsellorReplies.js` | 81.3% | 87.5% |
 | `pages/AgentDashboard.jsx` | 100% | 100% |
-| `pages/CustomerChat.jsx` | 76.3% | 82.8% |
+| `pages/CustomerChat.jsx` | 80.0% | 80.4% |
 
 **The counsellor dashboard had no tests at all at the Alpha.** Measuring
 coverage for the first time showed the frontend at **44.9%** of lines, with
@@ -84,6 +85,13 @@ behaviour that line counts cannot show:
 - **Security properties** — members cannot read each other's conversations,
   the API key never reaches a log line, provider error text never reaches a
   member.
+- **My profile** — items a member saves reach every new conversation; a whole
+  resume imports into four kinds; one member cannot remove another's; uploads
+  are previewed, never saved unasked.
+- **Usable with no key** — a full conversation with every key unset still
+  returns a personalised answer.
+- **Model choice** — a provider without a key can never be selected, and no
+  key ever appears in an API response.
 - **Concurrency** — the shared connection pool is created once under twenty
   simultaneous first requests; the test fails without the lock.
 

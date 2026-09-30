@@ -38,9 +38,22 @@ key through the repository — there is no way to commit a value that some
 collaborators can read and others cannot. Private means private *from the
 public*, not private *between the three of us*.
 
-So: **each team member uses their own API key from their own account.** Get one
-at <https://console.anthropic.com>, put it in your own `backend/.env`, and set
-a spend limit on your account while developing. If a key does leak, only one
+The platform needs **no key at all** to run: the built-in advisor is the
+default and is fully functional, so nobody has to hold a credential to use or
+demonstrate the product. A key only buys Claude or ChatGPT.
+
+When you do want one: **each team member uses their own API key from their own
+account** —
+Claude from <https://console.anthropic.com>, ChatGPT from
+<https://platform.openai.com> (step by step in
+[`AI_FEATURES.md`](AI_FEATURES.md#getting-a-key)). Put it in your own
+`backend/.env` and set a spend limit on your account while developing.
+
+Keys stay on the server. The browser never receives one: the model picker in
+the chat sends only a provider id (`anthropic`, `openai`, `mock`), and the API
+refuses any provider it has no key for. Never put a key in a `VITE_` variable
+or anywhere under `frontend/` — anything there is built into JavaScript that
+every visitor downloads. If a key does leak, only one
 person's account is affected and only one key needs rotating.
 
 If the team genuinely needs one shared key — for a recorded demonstration, say —
@@ -56,7 +69,7 @@ the options are:
 
 Whatever you choose, never paste a key into a commit message, a pull request
 description, a test fixture, a screenshot, a Slack or Discord message, or a
-submitted document. Anthropic keys are recognisable (`sk-ant-...`) and are
+submitted document. Anthropic keys (`sk-ant-...`) and OpenAI keys (`sk-...`) are recognisable and are
 scanned for automatically once they reach a public surface.
 
 **If a key is exposed, rotate it first.** Revoke it in the Anthropic console,

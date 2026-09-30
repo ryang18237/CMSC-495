@@ -159,9 +159,10 @@ Run `python run.py` again; it reports **PostgreSQL is reachable**.
 
 ## 4. Configuration
 
-You do not need a `backend/.env` to run the platform. Without one it uses safe
-development defaults and generates a local signing secret in
-`backend/.jwt_secret`. Create `.env` only to change something;
+You do not need a `backend/.env` to run the platform, and **you do not need an
+API key**. Without either, the built-in advisor answers and every feature
+works. The app uses safe development defaults and generates a local signing
+secret in `backend/.jwt_secret`. Create `.env` only to change something;
 `backend/.env.example` lists every setting.
 
 | Setting | Default | Purpose |
@@ -170,9 +171,11 @@ development defaults and generates a local signing secret in
 | `JWT_SECRET` | generated locally | Token signing key — never commit a real one |
 | `JWT_EXPIRE_MINUTES` | 60 | Session length |
 | `CORS_ORIGINS` | `http://localhost:5173` | Allowed browser origins |
-| `AI_PROVIDER` | `mock` | `mock` or `anthropic` |
-| `ANTHROPIC_API_KEY` | empty | Only with `AI_PROVIDER=anthropic` — your own key |
-| `ANTHROPIC_MODEL` | `claude-sonnet-4-5` | Pin a dated model for a reproducible demo |
+| `AI_PROVIDER` | `builtin` | Default model: `builtin` (no key), `anthropic` or `openai` |
+| `ANTHROPIC_API_KEY` | empty | Optional. A key on the **server** enables Claude for everyone using it |
+| `ANTHROPIC_MODEL` | `claude-haiku-4-5-20251001` | Any current Claude model id |
+| `OPENAI_API_KEY` | empty | Optional. A key on the **server** enables ChatGPT for everyone using it |
+| `OPENAI_MODEL` | `gpt-6-luna` | Any current OpenAI model id |
 | `AI_TIMEOUT_SECONDS` | 8 | Longest single provider call |
 | `AI_MAX_RETRIES` | 1 | Retries for retryable provider failures |
 | `AI_RETRY_BUDGET_SECONDS` | 5 | No retry starts after this much of a turn has passed |
@@ -180,7 +183,10 @@ development defaults and generates a local signing secret in
 
 `backend/.env` is git-ignored. **Never commit a key.** The repository is shared
 with the whole team, so a committed key is readable by everyone with access and
-stays in history after deletion. See [`SECURITY.md`](SECURITY.md).
+stays in history after deletion. Members of the platform never enter a key —
+only whoever runs the server does. How to add one:
+[`AI_FEATURES.md`](AI_FEATURES.md#adding-claude-or-chatgpt). See also
+[`SECURITY.md`](SECURITY.md).
 
 ---
 

@@ -9,26 +9,26 @@ one-off good run.
 
 | Area | Result | Enforced in CI | Detail |
 | --- | --- | --- | --- |
-| Backend tests | 187 passing, against PostgreSQL 16 | All must pass | [COVERAGE.md](COVERAGE.md) |
-| Frontend tests | 33 passing | All must pass | [COVERAGE.md](COVERAGE.md) |
-| Backend coverage | 94.3% lines · 84.2% branches | ≥ 90% combined | [COVERAGE.md](COVERAGE.md) |
-| Frontend coverage | 89.4% lines · 86.2% branches | ≥ 80% lines, ≥ 75% branches | [COVERAGE.md](COVERAGE.md) |
-| End-to-end | 10-step smoke test over HTTP | Must pass | [../CI_CD.md](../CI_CD.md) |
-| Cyclomatic complexity | Mean 2.4; 258 of 281 functions grade A; none above 13 | No function above 15 | [QUALITY.md](QUALITY.md) |
-| Maintainability index | 35 of 35 files grade A; mean 73.9 | — | [QUALITY.md](QUALITY.md) |
+| Backend tests | 236 passing, against PostgreSQL 16 | All must pass | [COVERAGE.md](COVERAGE.md) |
+| Frontend tests | 42 passing | All must pass | [COVERAGE.md](COVERAGE.md) |
+| Backend coverage | 94.4% lines · 83.8% branches | ≥ 90% combined | [COVERAGE.md](COVERAGE.md) |
+| Frontend coverage | 90.3% lines · 85.9% branches | ≥ 80% lines, ≥ 75% branches | [COVERAGE.md](COVERAGE.md) |
+| End-to-end | 11-step smoke test over HTTP | Must pass | [../CI_CD.md](../CI_CD.md) |
+| Cyclomatic complexity | Mean 2.6; 327 of 358 functions grade A; none above 15 | No function above 15 | [QUALITY.md](QUALITY.md) |
+| Maintainability index | 40 of 40 files grade A; mean 71.8 | — | [QUALITY.md](QUALITY.md) |
 | Static analysis | 0 findings from ruff, mypy, ESLint, actionlint | 0 findings | [QUALITY.md](QUALITY.md) |
 | Architecture | 16 boundary rules pass; diagram matches imports | Both | [../ARCHITECTURE_DESIGN.md](../ARCHITECTURE_DESIGN.md) |
 | API contract | Every route and error code documented; OpenAPI current | Both | [../API.md](../API.md) |
-| Conversation turn latency | p95 114 ms at 10 concurrent (mock provider) | p95 ≤ 5 s | [BENCHMARKS.md](BENCHMARKS.md) |
+| Conversation turn latency | p95 128 ms at 10 concurrent (built-in advisor) | p95 ≤ 5 s | [BENCHMARKS.md](BENCHMARKS.md) |
 | Recommender quality | Hit rate @3 1.00 · precision @3 0.76 | Hit @3 = 1.00, precision @3 ≥ 0.60 | [../AI_FEATURES.md](../AI_FEATURES.md) |
-| Code reviews | 3 formal reviews + integration review; 29 findings: 22 resolved, 2 partly, 5 open | — | [CODE_REVIEWS.md](CODE_REVIEWS.md) |
+| Code reviews | 3 formal reviews + integration review; 35 findings: 28 resolved, 2 partly, 5 open | — | [CODE_REVIEWS.md](CODE_REVIEWS.md) |
 
 ## Where the metrics changed the work
 
 Numbers are only worth collecting if they can change a decision. These did:
 
 - **Coverage** was 44.9% on the frontend when first measured, with every
-  counsellor screen untested. Nineteen tests later it is 89.4%.
+  counsellor screen untested. Nineteen tests took it to 89.4%; it is 90.1% now.
 - **Complexity** flagged the first recommender at CC 29. It was split before
   merge and the CI limit set below where it started.
 - **Architecture tests**, once they were actually running, caught a provider

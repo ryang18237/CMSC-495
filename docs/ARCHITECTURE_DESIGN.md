@@ -86,9 +86,9 @@ boundary real; without it, a component slowly absorbs its neighbours.
 | Component | Responsibility | Entry point | Must not |
 | --- | --- | --- | --- |
 | **Conversation Management** | Orchestrate one member turn from validation to persistence | `ConversationService` | Talk to a provider, read the personnel schema, construct prompts |
-| **Customer Data Adapter** | Translate the legacy personnel record into `CustomerContext`, and decide which fields an inquiry may see | `CustomerDataAdapter` | Leak legacy column names or codes to any caller |
+| **Customer Data Adapter** | Translate the legacy personnel record into `CustomerContext`, merge in the member's own profile, and decide which fields an inquiry may see | `CustomerDataAdapter`, `MemberRecordService` | Leak legacy column names or codes to any caller |
 | **Knowledge Base** | Retrieve approved reference articles | `KnowledgeBaseService` | Expose storage details; rank by anything the caller cannot inspect |
-| **AI Integration** | Build a provider-neutral prompt, call the provider, apply the retry policy, produce a safe fallback; rank pathways against a member profile | `AIIntegrationService`, `recommend()` | Touch the database; decide whether an answer reaches a member |
+| **AI Integration** | Build a provider-neutral prompt, call the chosen provider (the built-in advisor, Claude or ChatGPT), apply the retry policy, produce a safe fallback; rank pathways against a member profile | `AIIntegrationService`, `recommend()` | Touch the database; decide whether an answer reaches a member |
 | **Response Validation** | Decide whether a generated response may be shown, and what escalation a failure implies | `ResponseValidationService` | Generate text; call a provider |
 | **Escalation** | Own escalation rules, case creation, queue placement, handover context, and the counsellor reply path | `EscalationService`, `AgentHandoffService` | Query the personnel database; build prompts |
 | **Feedback** | Record member and counsellor feedback and publish an event | `FeedbackService` | Change AI behaviour directly |
@@ -373,6 +373,35 @@ grade or separation date — and nothing leaves the process (ADR 0006).
 
 ---
 
+### 6.7 My profile — entered once, used everywhere
+
+```mermaid
+sequenceDiagram
+    participant M as Member
+    participant API as Profile routes
+    participant MR as MemberRecordService (Customer Data Adapter)
+    participant C as Cache
+    participant CM as Conversation Management
+
+    M->>API: Add "CompTIA Security+" (typed, or confirmed from an upload)
+    API->>MR: add(member, CREDENTIAL, name)
+    MR->>MR: Validate, reject duplicates, store
+    MR->>C: Invalidate member:{id}:*
+    Note over M,CM: Any later conversation
+    M->>CM: "Which certification next?"
+    CM->>MR: get_relevant_account_data(member, CREDENTIAL)
+    MR-->>CM: Service record + added items, merged, minimised
+```
+
+The legacy personnel record stays read-only and holds military training only.
+The member's own items — credentials, training, education, experience — live
+in their own table and are merged by the adapter, so every conversation, the
+pathway recommender and the built-in advisor see one list and apply the same
+per-question permission rules. A `PROFILE` inquiry type lets a member read
+their own profile back; every other type still sees only the fields its
+question needs. An uploaded resume or transcript is parsed into suggestions
+and discarded; only the items the member confirms are stored (ADR 0007).
+
 ## 7. Data ownership
 
 | Store | Owner | Read by |
@@ -384,6 +413,7 @@ grade or separation date — and nothing leaves the process (ADR 0006).
 | Improvement recommendations | Learning Analytics Worker | Worker, counsellor dashboard |
 | Knowledge articles | Knowledge Base | Knowledge Base |
 | Legacy personnel record | Customer Data Adapter | Customer Data Adapter |
+| Member profile items (credentials, training, education, experience) | Customer Data Adapter | Customer Data Adapter |
 
 One component writes each store. Where a second component reads one — Escalation
 reading conversation messages to build a handover summary — it reads and does
@@ -413,8 +443,8 @@ not write.
 | Performance | Bounded prompt size, cached reference data, a retry budget, latency measured against a five-second target | Yes — every scenario's p95 under 5 s at 10 and 25 concurrent clients (`metrics/BENCHMARKS.md`) |
 | Reliability | Provider failure produces a safe fallback and a human handover rather than an error | Yes, tested |
 | Security | Identity from the verified token only; least-privilege data sharing; security-sensitive content never reaches the provider | Yes, tested |
-| Maintainability | One responsibility per component, documented interfaces, boundaries and a complexity limit enforced in CI | Yes — mean CC 2.4, every file MI grade A (`metrics/QUALITY.md`) |
-| Testability | Components callable without a web framework; a mock provider exercises the full path with no key or cost | Yes — 94% backend, 89% frontend line coverage (`metrics/COVERAGE.md`) |
+| Maintainability | One responsibility per component, documented interfaces, boundaries and a complexity limit enforced in CI | Yes — mean CC 2.6, every file MI grade A (`metrics/QUALITY.md`) |
+| Testability | Components callable without a web framework; a mock provider exercises the full path with no key or cost | Yes — 94% backend, 90% frontend line coverage (`metrics/COVERAGE.md`) |
 
 **The 10,000-user figure is a requirement, not an achievement.** The
 architecture permits horizontal scaling. One instance has been benchmarked;
@@ -437,7 +467,8 @@ final release.
 | Approved recommendations are not applied | The learning loop stops at human review | Deliberate for now; automating it needs its own decision |
 | A hung provider still exceeds the latency target | Worst case about 13 s (was about 61 s at the Alpha, before the retry budget) | Stream the response, or reply "still working" and finish asynchronously |
 | Synchronous provider call holds a worker thread | Thread pool exhaustion under load | Convert the provider and service to async |
-| Sign-in is CPU-bound by design (bcrypt) | p95 4.7 s at 25 concurrent sign-ins on 2 CPUs | Size instances for peak sign-in, not peak chat |
+| Sign-in is CPU-bound by design (bcrypt) | p95 4.8 s at 25 concurrent sign-ins on 2 CPUs | Size instances for peak sign-in, not peak chat |
+| The built-in advisor routes on topic, not meaning | Unusual phrasings escalate to a counsellor rather than being answered | A managed model where a key is configured; wider topic coverage otherwise |
 | Recommender similarity is lexical | Related fields only meet through shared catalog words | Swap the vectoriser for embeddings behind the same interface (ADR 0006) |
 | No handling for a member in distress | A service for veterans needs one before real use | Out of scope for this course; must be designed before any real deployment |
 
@@ -481,8 +512,9 @@ backend, built web client and documentation — as a build artifact
 | Authentication and Authorization | `app/security.py` |
 | Load Balancer / Entry Point | `app/main.py` middleware; instance id in health |
 | Existing personnel database | `LegacyMemberMaster` (synthetic) |
-| Managed AI Model Provider | `app/modules/ai_integration/providers/` |
+| Managed AI Model Provider | `app/modules/ai_integration/providers/` — a keyless built-in advisor by default, with Anthropic and OpenAI optional and chosen per message (ADR 0008, ADR 0009) |
 | Personalised insight from completed training | `app/modules/ai_integration/recommender.py`, `/api/v1/pathways/recommended` |
+| Member-maintained profile | `app/modules/customer_data/member_record.py`, `/api/v1/profile/record` |
 | CI/CD pipeline | `.github/workflows/ci.yml` |
 
 Every component named in the specification exists in code. Section 10 states

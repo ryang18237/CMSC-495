@@ -47,13 +47,19 @@ side. Full setup, PostgreSQL and troubleshooting: [`docs/INSTALL.md`](docs/INSTA
 
 Interactive API documentation runs at <http://127.0.0.1:8000/docs>.
 
+**No API key is needed.** The built-in advisor answers from the member's
+profile, so the platform is complete as cloned. To have Claude or ChatGPT
+answer instead, whoever runs the server adds one key to `backend/.env` — see
+[Adding Claude or ChatGPT](docs/AI_FEATURES.md#adding-claude-or-chatgpt).
+
 ---
 
 ## What it does
 
 | Feature | Detail |
 | --- | --- |
-| **Conversational assistant** | Answers grounded in the member's completed training and approved articles, with sources shown. Behind a provider interface: the Anthropic Messages API with a key, a deterministic mock without one. |
+| **My profile** | Members enter credentials, education, experience and training once — typed in, or imported from a resume or transcript — and every conversation and recommendation uses them from then on. |
+| **Conversational assistant** | Answers grounded in the member's profile and approved articles, with sources shown. Works with **no API key**: a built-in advisor composes answers from the profile and the recommender. Claude and ChatGPT are optional upgrades the operator adds; members are never asked for a key. |
 | **Pathway recommender** | Ranks 23 civilian credentials and programs against the member's record using TF-IDF and cosine similarity, explains each suggestion, never suggests something already held. Needs no key. |
 | **Response validation** | Every generated answer is checked before a member sees it — no claims of enrolling or applying, no guaranteed outcomes, no sensitive identifiers, no truncated text. |
 | **Deterministic escalation** | Five rule-based reasons hand a conversation to a person: member request, security concern, unsupported topic, validation failure, AI service failure. |
@@ -75,7 +81,7 @@ How to use each of these: [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md).
 | [AI features](docs/AI_FEATURES.md) | The assistant, the recommender, evaluation results, failure handling |
 | [Architecture design](docs/ARCHITECTURE_DESIGN.md) | Components, boundaries, data flows, quality attributes, debt |
 | [Architecture as built](docs/ARCHITECTURE.md) | Generated module graph and implementation notes |
-| [Decision records](docs/adr/README.md) | Why the six hardest-to-reverse decisions went the way they did |
+| [Decision records](docs/adr/README.md) | Why the eight hardest-to-reverse decisions went the way they did |
 | [CI/CD pipeline](docs/CI_CD.md) | The four jobs, what each gates, run evidence |
 | [Code quality metrics](docs/metrics/README.md) | Coverage, complexity, benchmarks, code reviews |
 | [Security](docs/SECURITY.md) | Secrets, access rules, what the shared repository means for keys |
@@ -105,11 +111,11 @@ React client ──HTTP──▶ API layer ──▶ Conversation Management ─
 
 | | |
 | --- | --- |
-| Tests | 187 backend (PostgreSQL 16) · 33 frontend · 10-step end-to-end |
-| Coverage | 94.3% backend lines · 89.4% frontend lines, with floors in CI |
-| Complexity | Mean cyclomatic complexity 2.4; no function above 13; CI limit 15 |
+| Tests | 236 backend (PostgreSQL 16) · 42 frontend · 11-step end-to-end |
+| Coverage | 94.4% backend lines · 90.3% frontend lines, with floors in CI |
+| Complexity | Mean cyclomatic complexity 2.6; no function above 15; CI limit 15 |
 | Static analysis | 0 findings — ruff, mypy, ESLint, actionlint |
-| Latency | Conversation turn p95 114 ms at 10 concurrent clients (mock provider); target 5 s |
+| Latency | Conversation turn p95 128 ms at 10 concurrent clients (built-in advisor); target 5 s |
 | Recommender | Relevant pathway in the top three for 7 of 7 labelled records |
 
 Details and how each is measured: [`docs/metrics/`](docs/metrics/README.md).
@@ -151,7 +157,7 @@ backend/
       feedback/            Feedback and event outbox
       analytics/           Learning Analytics Worker
       cache/, monitoring/  Supporting components
-  tests/                   187 tests, including contract and architecture tests
+  tests/                   236 tests, including contract and architecture tests
 frontend/src/              React client: chat, recommendations, counsellor dashboard
 docs/                      Everything in the documentation table above
 scripts/
@@ -169,8 +175,9 @@ Recorded in full, with consequences, in section 10 of the
 [architecture design](docs/ARCHITECTURE_DESIGN.md#10-known-architectural-debt).
 The ones to know before relying on this:
 
-- The chat assistant uses the mock provider unless a team member configures
-  their own key. The recommender needs none.
+- The built-in advisor routes on topic rather than understanding free text,
+  so unusual phrasings reach a counsellor instead of being answered. Configure
+  Claude or ChatGPT on the server for wider coverage.
 - The cache and rate-limit counters are per process, so instances are not yet
   fully stateless; monitoring counters are per instance and not exported.
 - The provider call is synchronous and holds a worker thread for its duration.
