@@ -316,3 +316,44 @@ def test_concurrent_first_requests_share_one_pool(monkeypatch: pytest.MonkeyPatc
 
     assert len(seen) == 20
     assert len(set(seen)) == 1
+
+
+# ---------------------------------------------------------------------------
+# The development plan steers the list
+# ---------------------------------------------------------------------------
+def test_a_planned_pathway_drops_out_of_the_list() -> None:
+    """Choosing something should move the member on, not keep offering it."""
+    profile = MemberProfile(completed_training=["Network Administration Course"])
+    before = recommend(profile, limit=5)
+    chosen = before.recommendations[0].pathway
+
+    after = recommend(
+        MemberProfile(completed_training=["Network Administration Course"], planned=[chosen.title]),
+        limit=5,
+    )
+
+    assert chosen.pathway_id not in {item.pathway.pathway_id for item in after.recommendations}
+    # The rest move up rather than the list simply getting shorter.
+    assert len(after.recommendations) == len(before.recommendations)
+
+
+def test_a_plan_item_carrying_an_organisation_still_matches() -> None:
+    """A profile item reads 'Title (Where)'; the catalog title has no brackets."""
+    profile = MemberProfile(completed_training=["Network Administration Course"])
+    chosen = recommend(profile, limit=5).recommendations[0].pathway
+
+    after = recommend(
+        MemberProfile(
+            completed_training=["Network Administration Course"],
+            planned=[f"{chosen.title} (Central Texas College)"],
+        ),
+        limit=5,
+    )
+
+    assert chosen.pathway_id not in {item.pathway.pathway_id for item in after.recommendations}
+
+
+def test_a_plan_is_never_scored_as_experience() -> None:
+    """A goal must not make the member look more qualified than they are."""
+    planned_only = MemberProfile(planned=["CompTIA Security+"])
+    assert planned_only.is_empty, "a plan alone is not a record"

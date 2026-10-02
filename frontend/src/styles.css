@@ -610,6 +610,7 @@ button.link:hover:not(:disabled) { color: #8ab0f5; }
 
 .pathway-summary { margin: 7px 0 0; font-size: 13px; color: var(--muted); }
 .pathway-meta { margin: 8px 0 0; font-size: 12px; color: var(--muted); opacity: 0.85; }
+.pathway-add { margin-top: 11px; width: 100%; padding: 7px 12px; font-size: 13px; }
 .pathways .disclaimer { margin-top: 14px; font-size: 12px; }
 
 .pill.strength { white-space: nowrap; flex: none; }

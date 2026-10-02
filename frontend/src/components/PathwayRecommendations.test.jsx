@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import PathwayRecommendations from './PathwayRecommendations.jsx'
 import { pathwaysApi } from '../api/pathways.js'
-import { ApiError } from '../api/client.js'
+import { api, ApiError } from '../api/client.js'
 
 const session = { token: 'test-token', role: 'CUSTOMER', displayName: 'Alex Rivera' }
 
@@ -95,5 +96,47 @@ describe('PathwayRecommendations', () =>
     render(<PathwayRecommendations session={session} />)
 
     expect(await screen.findByRole('alert')).toHaveTextContent('FORBIDDEN')
+  })
+
+  it('puts a suggestion on the plan as a goal, not as a credential', async () =>
+  {
+    vi.spyOn(pathwaysApi, 'recommended').mockResolvedValue({
+      basis: 'COMPLETED_TRAINING',
+      method: 'tfidf-cosine/1',
+      disclaimer: 'x',
+      recommendations: [
+        {
+          pathwayId: 'bs-information-technology',
+          title: 'Bachelor of Science in Information Technology',
+          kind: 'DEGREE',
+          field: 'Information Technology',
+          summary: 'Four-year degree.',
+          score: 0.4,
+          strength: 'STRONG',
+          reason: 'BUILDS_ON',
+          buildsOn: 'Network Administration Course',
+          matchedTerms: ['network'],
+        },
+      ],
+    })
+    const addRecordItem = vi.spyOn(api, 'addRecordItem').mockResolvedValue({})
+    const onPlanned = vi.fn()
+
+    render(<PathwayRecommendations session={session} onPlanned={onPlanned} />)
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Add to my plan' }))
+
+    // GOAL, never CREDENTIAL: the member intends to do this, they have not
+    // done it, and the assistant must not be told otherwise.
+    await waitFor(() =>
+      expect(addRecordItem).toHaveBeenCalledWith(
+        'test-token',
+        'GOAL',
+        'Bachelor of Science in Information Technology',
+        '',
+      ),
+    )
+    // The parent re-ranks, so the chosen suggestion drops off the list.
+    await waitFor(() => expect(onPlanned).toHaveBeenCalled())
   })
 })

@@ -118,7 +118,11 @@ function MemberView({ session })
       <div className="member-layout" hidden={tab !== 'chat'}>
         <CustomerChat session={session} />
         <aside className="member-sidebar">
-          <PathwayRecommendations session={session} refreshKey={recordVersion} />
+          <PathwayRecommendations
+            session={session}
+            refreshKey={recordVersion}
+            onPlanned={() => setRecordVersion((v) => v + 1)}
+          />
         </aside>
       </div>
       <div hidden={tab !== 'profile'}>

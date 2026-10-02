@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { pathwaysApi } from '../api/pathways.js'
+import { api } from '../api/client.js'
 
 /**
  * "Recommended next steps" panel beside the member's chat.
@@ -38,10 +39,47 @@ function reasonText(item)
 // actually read, and the rest are one click away.
 const SHOWN_BY_DEFAULT = 3
 
-export default function PathwayRecommendations({ session, refreshKey = 0 })
+export default function PathwayRecommendations({ session, refreshKey = 0, onPlanned })
 {
   const [state, setState] = useState({ status: 'loading', data: null, error: null })
   const [showAll, setShowAll] = useState(false)
+  const [planning, setPlanning] = useState(null)
+  const [planError, setPlanError] = useState(null)
+
+  /**
+   * Put a suggestion on the member's development plan.
+   *
+   * It is saved as a GOAL, never as a credential: the member intends to do
+   * this, they have not done it. The list then re-ranks without it, so
+   * choosing something moves the member on rather than leaving them looking
+   * at a decision they have already made. Choosing the same thing twice is
+   * not an error worth showing -- it is already on the plan either way.
+   */
+  async function addToPlan(item)
+  {
+    setPlanning(item.pathwayId)
+    setPlanError(null)
+    try
+    {
+      await api.addRecordItem(session.token, 'GOAL', item.title, '')
+      if (onPlanned) onPlanned()
+    }
+    catch (caught)
+    {
+      if (caught.code !== 'RECORD_ITEM_EXISTS')
+      {
+        setPlanError(`${caught.message} (${caught.code})`)
+      }
+      else if (onPlanned)
+      {
+        onPlanned()
+      }
+    }
+    finally
+    {
+      setPlanning(null)
+    }
+  }
 
   // refreshKey changes whenever My record changes, so the list is re-ranked
   // against the member's latest record without a page reload.
@@ -113,6 +151,14 @@ export default function PathwayRecommendations({ session, refreshKey = 0 })
                 {item.matchedTerms.length > 0 && (
                   <p className="pathway-meta">Matched on {item.matchedTerms.join(', ')}</p>
                 )}
+                <button
+                  type="button"
+                  className="secondary pathway-add"
+                  disabled={planning === item.pathwayId}
+                  onClick={() => addToPlan(item)}
+                >
+                  {planning === item.pathwayId ? 'Adding…' : 'Add to my plan'}
+                </button>
               </li>
             ))}
           </ol>
@@ -123,6 +169,10 @@ export default function PathwayRecommendations({ session, refreshKey = 0 })
                 ? 'Show fewer'
                 : `Show ${state.data.recommendations.length - SHOWN_BY_DEFAULT} more`}
             </button>
+          )}
+
+          {planError && (
+            <p className="error" role="alert">{planError}</p>
           )}
 
           <p className="muted disclaimer">{state.data.disclaimer}</p>

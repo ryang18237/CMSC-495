@@ -106,6 +106,11 @@ class MemberProfile:
     completed_training: list[str] = field(default_factory=list)
     credentials: list[str] = field(default_factory=list)
     occupational_specialty: str | None = None
+    # Pathways the member has already put on their development plan. They are
+    # dropped from the results -- suggesting what someone has just chosen is
+    # noise -- but never scored as experience, because a plan is an intention
+    # and treating it as fact would make every later suggestion wrong.
+    planned: list[str] = field(default_factory=list)
 
     @property
     def is_empty(self) -> bool:
@@ -262,9 +267,20 @@ def _index() -> _Index:
 # ---------------------------------------------------------------------------
 # Recommending
 # ---------------------------------------------------------------------------
+# A profile item carries its organisation in brackets -- "Associate of Applied
+# Science (Central Texas College)" -- which would never match a catalog title.
+_ORGANIZATION_SUFFIX = re.compile(r"\s*\([^)]*\)\s*$")
+
+
 def _held_pathway_ids(credentials: list[str], pathways: tuple[Pathway, ...]) -> set[str]:
     """Pathways the member already has, matched by title or a known alias."""
+    # Both spellings are kept: a catalog title can legitimately end in
+    # brackets ("Cisco Certified Network Associate (CCNA)"), so stripping is
+    # an extra way to match, never a replacement for the name as written.
     held_names = {credential.strip().lower() for credential in credentials}
+    held_names |= {
+        _ORGANIZATION_SUFFIX.sub("", credential).strip().lower() for credential in credentials
+    }
     return {
         pathway.pathway_id
         for pathway in pathways
@@ -383,9 +399,11 @@ def recommend(profile: MemberProfile, limit: int = 5) -> RecommendationSet:
     """Rank catalog pathways against a member's record."""
     index = _index()
     held = _held_pathway_ids(profile.credentials, index.pathways)
+    planned = _held_pathway_ids(profile.planned, index.pathways)
+    skip = held | planned
 
     if profile.is_empty:
-        return _starters(index, held, limit)
+        return _starters(index, skip, limit)
 
     member = _vectorise_member(profile, index.idf)
     held_titles = {p.pathway_id: p.title for p in index.pathways if p.pathway_id in held}
@@ -393,11 +411,11 @@ def recommend(profile: MemberProfile, limit: int = 5) -> RecommendationSet:
     ranked = [
         recommendation
         for pathway in index.pathways
-        if pathway.pathway_id not in held
+        if pathway.pathway_id not in skip
         and (recommendation := _score_pathway(pathway, index, member, held_titles)) is not None
     ]
     if not ranked:
-        return _starters(index, held, limit)
+        return _starters(index, skip, limit)
 
     # Ties broken by title so the order never depends on dictionary ordering.
     ranked.sort(key=lambda item: (-item.score, item.pathway.title))

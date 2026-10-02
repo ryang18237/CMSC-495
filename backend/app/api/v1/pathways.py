@@ -17,6 +17,7 @@ from app.errors import ForbiddenError
 from app.models import User
 from app.modules.ai_integration.recommender import MemberProfile, recommend
 from app.modules.customer_data.adapter import CustomerDataAdapter
+from app.modules.customer_data.member_record import PLAN_KIND, MemberRecordService
 from app.schemas import (
     PathwayBasis,
     PathwayReason,
@@ -49,6 +50,12 @@ def recommended_pathways(
         raise ForbiddenError("Pathway recommendations are available to members only.")
 
     context = CustomerDataAdapter(db).get_relevant_account_data(user.id, "CREDENTIAL")
+    # The plan is read separately from the permission set. It is not a fact
+    # about the member, so it never belongs in the data the adapter minimises
+    # for a provider; it is only used here to drop what they have already
+    # chosen from the list of what to choose next.
+    planned = MemberRecordService(db).by_kind(user.id)[PLAN_KIND]
+
     profile = MemberProfile(
         completed_training=list(context.completed_training),
         credentials=list(context.credentials),
@@ -57,6 +64,7 @@ def recommended_pathways(
             if "occupational_specialty" in context.available_fields
             else None
         ),
+        planned=planned,
     )
     result = recommend(profile, limit=limit)
 
