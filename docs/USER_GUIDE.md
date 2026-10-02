@@ -95,13 +95,16 @@ new conversation.
 
   | Kind | What goes in it |
   | --- | --- |
+  | **Development plan** | Something you intend to do, not something you hold |
   | **Credential** | A certification or license — CompTIA Security+, an EMT license |
   | **Education** | A degree, diploma or coursework |
   | **Experience** | A job or role, military or civilian |
   | **Training** | A course or school the service record missed |
 
   Choose the kind, type the name, optionally add the issuer, school or
-  employer, and click **Add**. **Remove** takes an item off again.
+  employer, and click **Add**. **Remove**, beside every item you added, takes
+  it off again — there is nothing you cannot undo. Only the service record is
+  fixed, because it comes from the personnel system rather than from you.
   Each kind has its own card, and an empty one says what belongs in it.
 - **Have a resume or transcript? Import it instead** is a shortcut if you have
   a long record. Open it, pick a `.txt`, `.csv` or `.pdf`, and everything it
@@ -115,6 +118,27 @@ new conversation.
 Changes take effect straight away: the next answer and the recommended next
 steps both use them. You can also just ask the assistant *"what do you have on
 file for me?"* to hear it back.
+
+### Your development plan
+
+![The profile with a development plan](images/guide/09-development-plan.png)
+
+**Development plan** is the first card on your profile: what you are working
+toward, as opposed to what you have already done.
+
+- Add to it from **Recommended next steps** — each suggestion has an **Add to
+  my plan** button — or type your own, choosing **Development plan** as the
+  type.
+- Once something is on your plan it leaves the suggestions list, and the rest
+  move up. Choosing something moves you on rather than leaving you looking at
+  a decision you have already made.
+- **Remove** takes it off again, and the suggestion comes back. Nothing on
+  your profile is permanent; you can add and remove any item at any time.
+
+A plan item is never treated as something you hold. It is left out of the
+completeness bar, and it is never sent to an AI provider as a fact about you —
+otherwise the assistant would start advising you as though you had already
+earned it.
 
 ### Recommended next steps
 
