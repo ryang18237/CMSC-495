@@ -132,3 +132,25 @@ def test_workload_is_agent_only(client: TestClient, customer_auth: dict[str, str
     response = client.get("/api/v1/agent/workload", headers=customer_auth)
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "FORBIDDEN"
+
+
+def test_docs_page_loads_no_third_party_assets(client: TestClient) -> None:
+    """The API reference has to render on a machine with no internet.
+
+    FastAPI's stock /docs pulls Swagger UI from a public CDN, so behind a
+    proxy or offline the page arrives as unstyled text. We serve our own
+    copies instead; this fails if anyone points it back at a CDN.
+    """
+    page = client.get("/docs")
+    assert page.status_code == 200
+    assert "cdn.jsdelivr.net" not in page.text
+    assert "fastapi.tiangolo.com" not in page.text
+    assert "/static/swagger-ui.css" in page.text
+    assert "/static/swagger-ui-bundle.js" in page.text
+
+
+def test_docs_assets_are_served_locally(client: TestClient) -> None:
+    for path in ("/static/swagger-ui.css", "/static/swagger-ui-bundle.js"):
+        response = client.get(path)
+        assert response.status_code == 200, path
+        assert len(response.content) > 10_000, path

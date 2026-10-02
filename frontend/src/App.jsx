@@ -55,7 +55,7 @@ export default function App()
   return (
     <main className="shell">
       <nav className="topbar">
-        <span className="brand">SkillBridge AI</span>
+        <span className="brand">SkillbridgeAI</span>
         <span className="muted">
           {session.displayName} &middot; {session.role}
         </span>

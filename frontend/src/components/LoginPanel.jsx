@@ -66,7 +66,7 @@ export default function LoginPanel({ onSignedIn })
 
   return (
     <div className="card login">
-      <h1>SkillBridge AI</h1>
+      <h1>SkillbridgeAI</h1>
       <p className="muted">
         Education and career development for military members and veterans. Free to use.
       </p>
