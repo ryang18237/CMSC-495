@@ -44,7 +44,17 @@ from app.errors import ConflictError, NotFoundError, UnprocessableError
 from app.models import MemberRecordItem
 from app.modules.cache.service import get_cache
 
-KINDS = ("CREDENTIAL", "TRAINING", "EDUCATION", "EXPERIENCE")
+# What a member has already done. These four are what the completeness score
+# measures and what the assistant treats as fact about them.
+HELD_KINDS = ("CREDENTIAL", "TRAINING", "EDUCATION", "EXPERIENCE")
+
+# What a member intends to do. A plan is deliberately a separate kind rather
+# than a credential with a flag: a goal must never be read as something the
+# member holds, or the assistant would start recommending the step after a
+# degree nobody has earned yet.
+PLAN_KIND = "GOAL"
+
+KINDS = (*HELD_KINDS, PLAN_KIND)
 MAX_NAME_LENGTH = 200
 MAX_ORGANIZATION_LENGTH = 200
 MAX_DETAIL_LENGTH = 500
@@ -102,7 +112,7 @@ class MemberRecordService:
         kind = kind.strip().upper()
         if kind not in KINDS:
             raise UnprocessableError(
-                "Kind must be CREDENTIAL, TRAINING, EDUCATION or EXPERIENCE.",
+                "Kind must be one of " + ", ".join(KINDS) + ".",
                 code="INVALID_RECORD_ITEM",
             )
 

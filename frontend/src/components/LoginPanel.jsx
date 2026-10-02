@@ -134,13 +134,6 @@ export default function LoginPanel({ onSignedIn })
           {error}
         </p>
       )}
-
-      {IS_DEMO_BUILD && (
-        <p className="hint">
-          Demo accounts are seeded and their password is filled in for you. Sign-in itself is
-          real &mdash; every request after it carries a signed token.
-        </p>
-      )}
     </div>
   )
 }

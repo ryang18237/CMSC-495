@@ -14,7 +14,7 @@ from app.errors import ForbiddenError
 from app.models import MemberRecordItem, User
 from app.modules.customer_data.adapter import CustomerDataAdapter
 from app.modules.customer_data.member_record import (
-    KINDS,
+    HELD_KINDS,
     Entry,
     MemberRecordService,
     extract_candidates,
@@ -60,13 +60,15 @@ def _completeness(items: list[MemberRecordItem], has_service_record: bool) -> Pr
     """A blunt score: one fifth for the service record, one fifth per kind.
 
     It exists to tell a member what is still worth adding, not to judge them,
-    so it counts presence rather than quantity.
+    so it counts presence rather than quantity. Plan items are left out: a
+    goal is something you intend to do, and not having one yet is not a gap
+    in the record of what you have done.
     """
-    present = {item.kind for item in items}
+    present = {item.kind for item in items if item.kind in HELD_KINDS}
     filled = len(present) + (1 if has_service_record else 0)
     return ProfileCompleteness(
-        percent=round(filled / (len(KINDS) + 1) * 100),
-        missing_kinds=[RecordItemKind(kind) for kind in KINDS if kind not in present],
+        percent=round(filled / (len(HELD_KINDS) + 1) * 100),
+        missing_kinds=[RecordItemKind(kind) for kind in HELD_KINDS if kind not in present],
     )
 
 

@@ -393,3 +393,61 @@ def test_a_resume_upload_is_saved_once_confirmed(
     assert record["completeness"]["missingKinds"] == []
     degree = next(item for item in record["added"] if item["kind"] == "EDUCATION")
     assert degree["organization"]
+
+
+# ---------------------------------------------------------------------------
+# The development plan
+# ---------------------------------------------------------------------------
+def test_a_plan_item_is_stored_and_removable(client: TestClient, customer_auth) -> None:
+    """A member decides what they are working toward, and can change their mind."""
+    created = client.post(
+        f"{RECORD}/items",
+        headers=customer_auth,
+        json={"kind": "GOAL", "name": "Bachelor of Science in Information Technology"},
+    )
+    assert created.status_code == 201
+    item_id = created.json()["itemId"]
+
+    record = client.get(RECORD, headers=customer_auth).json()
+    assert any(item["kind"] == "GOAL" for item in record["added"])
+
+    assert client.delete(f"{RECORD}/items/{item_id}", headers=customer_auth).status_code == 204
+    record = client.get(RECORD, headers=customer_auth).json()
+    assert not any(item["kind"] == "GOAL" for item in record["added"])
+
+
+def test_a_plan_does_not_count_toward_completeness(client: TestClient, customer_auth) -> None:
+    """Completeness measures what you have done, not what you intend to do."""
+    before = client.get(RECORD, headers=customer_auth).json()["completeness"]
+    client.post(
+        f"{RECORD}/items",
+        headers=customer_auth,
+        json={"kind": "GOAL", "name": "CompTIA Security+"},
+    )
+    after = client.get(RECORD, headers=customer_auth).json()["completeness"]
+
+    assert after["percent"] == before["percent"]
+    assert "GOAL" not in after["missingKinds"]
+
+
+def test_a_plan_is_never_sent_to_the_provider(client: TestClient, customer_auth) -> None:
+    """A goal is an intention. Nothing downstream may treat it as a fact."""
+    client.post(
+        f"{RECORD}/items",
+        headers=customer_auth,
+        json={"kind": "GOAL", "name": "Bachelor of Science in Information Technology"},
+    )
+    record = client.get(RECORD, headers=customer_auth).json()
+    goal = next(item for item in record["added"] if item["kind"] == "GOAL")
+
+    reply = client.post(
+        "/api/v1/conversations",
+        headers=customer_auth,
+    ).json()["conversationId"]
+    answer = client.post(
+        f"/api/v1/conversations/{reply}/messages",
+        headers=customer_auth,
+        json={"message": "What should I do next?"},
+    ).json()
+
+    assert goal["name"] not in answer["response"]

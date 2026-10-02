@@ -464,6 +464,10 @@ button.link:hover:not(:disabled) { color: #8ab0f5; }
 }
 .record-group .section { margin: 0 0 4px; }
 .record-group.official { border-style: dashed; }
+/* The plan is the part a member acts on, so it is the one card that is lit. */
+.record-group.plan { border-color: var(--accent-line); background: var(--accent-soft); }
+.record-group.plan .record-list li { background: var(--surface-2); }
+.record-group.plan .section { color: var(--accent); }
 
 .record-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; font-size: 14px; }
 .record-list li {

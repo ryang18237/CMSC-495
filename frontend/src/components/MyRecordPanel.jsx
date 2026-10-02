@@ -15,18 +15,20 @@ import { api } from '../api/client.js'
  */
 
 const KIND_LABELS = {
+  GOAL: 'Development plan',
   CREDENTIAL: 'Credential',
   TRAINING: 'Training',
   EDUCATION: 'Education',
   EXPERIENCE: 'Experience',
 }
 
-// The order the panel groups them in: what a career conversation asks about
-// first comes first.
-const KIND_ORDER = ['CREDENTIAL', 'EDUCATION', 'EXPERIENCE', 'TRAINING']
+// The plan leads, because it is the part a member comes back to change. The
+// rest is the record of what they have already done.
+const KIND_ORDER = ['GOAL', 'CREDENTIAL', 'EDUCATION', 'EXPERIENCE', 'TRAINING']
 
 // An empty card should say what belongs in it, in the member's own terms.
 const EMPTY_HINTS = {
+  GOAL: 'What you are working toward. Add a suggestion from Recommended next steps, or type your own.',
   CREDENTIAL: 'Certifications and licences you hold, such as CompTIA Security+.',
   TRAINING: 'Military or civilian courses you have completed.',
   EDUCATION: 'Degrees and programmes, finished or in progress.',
@@ -36,6 +38,7 @@ const EMPTY_HINTS = {
 // A worked example beats a label: people fill a field faster when they can
 // see the shape of the answer.
 const PLACEHOLDERS = {
+  GOAL: { name: 'e.g. Bachelor of Science in Information Technology', organization: 'Where (optional)' },
   CREDENTIAL: { name: 'e.g. CompTIA Security+', organization: 'Issuer (optional)' },
   TRAINING: { name: 'e.g. Basic Leader Course', organization: 'Where (optional)' },
   EDUCATION: { name: 'e.g. Associate of Applied Science', organization: 'School (optional)' },
@@ -250,7 +253,10 @@ export default function MyRecordPanel({ session, onChange })
         )}
 
         {grouped.map(([groupKind, items]) => (
-          <div className="record-group" key={groupKind}>
+          <div
+            className={`record-group ${groupKind === 'GOAL' ? 'plan' : ''}`}
+            key={groupKind}
+          >
             <h3 className="section">{KIND_LABELS[groupKind]}</h3>
             {items.length === 0 ? (
               <p className="record-empty">{EMPTY_HINTS[groupKind]}</p>

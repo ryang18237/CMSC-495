@@ -1763,7 +1763,8 @@
           "CREDENTIAL",
           "TRAINING",
           "EDUCATION",
-          "EXPERIENCE"
+          "EXPERIENCE",
+          "GOAL"
         ],
         "title": "RecordItemKind"
       },

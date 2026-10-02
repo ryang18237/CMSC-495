@@ -276,9 +276,16 @@ Editing the profile takes effect on the next message.
 | `TRAINING` | A course, school or military qualification |
 | `EDUCATION` | A degree, diploma or coursework |
 | `EXPERIENCE` | A job or role, military or civilian |
+| `GOAL` | Something the member intends to do -- their development plan |
 
 Each item is a `name`, plus an optional `organization` (issuer, school or
 employer) and an optional `detail`. Only `name` is required.
+
+`GOAL` is deliberately a kind of its own rather than a flag on the others. A
+plan item must never be read as something the member holds, or the assistant
+would start recommending the step after a degree nobody has earned. It is
+excluded from the facts sent to an AI provider, and from `completeness`:
+having no plan is not a gap in the record of what you have done.
 
 ### GET /api/v1/profile/record → 200
 

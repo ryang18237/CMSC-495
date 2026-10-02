@@ -270,6 +270,8 @@ class RecordItemKind(str, Enum):
     TRAINING = "TRAINING"
     EDUCATION = "EDUCATION"
     EXPERIENCE = "EXPERIENCE"
+    # Something the member intends to do, not something they hold.
+    GOAL = "GOAL"
 
 
 class RecordItemSource(str, Enum):
