@@ -126,7 +126,11 @@ function MemberView({ session })
         </aside>
       </div>
       <div hidden={tab !== 'profile'}>
-        <MyRecordPanel session={session} onChange={() => setRecordVersion((v) => v + 1)} />
+        <MyRecordPanel
+          session={session}
+          refreshKey={recordVersion}
+          onChange={() => setRecordVersion((v) => v + 1)}
+        />
       </div>
     </div>
   )
