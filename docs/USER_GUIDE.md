@@ -32,9 +32,15 @@ instead**.
 
 **Sign out** is in the top right. Your session ends when you close the tab.
 
+The interface is dark throughout. That is the only theme; there is no switch
+to find and nothing to configure.
+
 ---
 
 ## For members
+
+A member sees two tabs: **Chat** and **My profile**. Both stay loaded, so
+switching between them never loses a half-typed question.
 
 ### Asking a question
 
@@ -79,8 +85,9 @@ it hands to a counsellor rather than guessing.
 
 ![My profile panel with an upload being reviewed](images/guide/08-my-record.png)
 
-**My profile** is everything the assistant knows about you, so you never have
-to repeat it in a new conversation.
+**My profile** is its own tab, next to **Chat** at the top of the page. It is
+everything the assistant knows about you, so you never have to repeat it in a
+new conversation.
 
 - **From your service record** is what the personnel system holds — military
   training only. You can't edit it here.
@@ -95,10 +102,12 @@ to repeat it in a new conversation.
 
   Choose the kind, type the name, optionally add the issuer, school or
   employer, and click **Add**. **Remove** takes an item off again.
-- **Upload a resume or transcript** reads a `.txt`, `.csv` or `.pdf` and lists
-  everything it recognised, sorted into those four kinds. Untick anything
-  wrong and click **Save**. Nothing is saved until you do, and the file itself
-  is never kept.
+  Each kind has its own card, and an empty one says what belongs in it.
+- **Have a resume or transcript? Import it instead** is a shortcut if you have
+  a long record. Open it, pick a `.txt`, `.csv` or `.pdf`, and everything it
+  recognised comes back sorted into those four kinds. Untick anything wrong
+  and click **Save**. Nothing is saved until you do, and the file itself is
+  never kept.
 - The bar at the top shows how complete your profile looks and names what is
   still missing. It is a prompt, not a score — the assistant works at any
   level of completeness.
@@ -110,8 +119,9 @@ file for me?"* to hear it back.
 ### Recommended next steps
 
 The panel beside the chat ranks civilian certifications, licenses, programs
-and degrees against what is already on your record. Each suggestion tells you
-**why** it was made:
+and degrees against what is already on your record. The top three are shown,
+numbered best first, with **Show 2 more** underneath for the rest. Each
+suggestion tells you **why** it was made:
 
 | Label | Meaning |
 | --- | --- |

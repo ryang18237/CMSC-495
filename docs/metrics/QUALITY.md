@@ -25,9 +25,9 @@ push and fails if any function's cyclomatic complexity exceeds 15.
 | Component | Files | SLOC | Functions | Mean CC | Worst CC | Mean MI |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | Conversation Management | 1 | 188 | 10 | 3.10 | 8 (B) | 59.0 |
-| Customer Data Adapter | 2 | 582 | 36 | 4.11 | 15 (C) | 47.7 |
+| Customer Data Adapter | 2 | 589 | 37 | 3.86 | 13 (C) | 48.9 |
 | Knowledge Base | 1 | 86 | 7 | 3.29 | 6 (B) | 60.4 |
-| AI Integration | 8 | 870 | 87 | 3.49 | 11 (C) | 67.4 |
+| AI Integration | 8 | 944 | 88 | 3.45 | 11 (C) | 67.4 |
 | Response Validation | 1 | 80 | 6 | 5.00 | 10 (B) | 64.7 |
 | Escalation | 3 | 246 | 19 | 2.53 | 7 (B) | 75.6 |
 | Feedback | 1 | 81 | 5 | 2.40 | 6 (B) | 66.4 |
@@ -35,10 +35,10 @@ push and fails if any function's cyclomatic complexity exceeds 15.
 | Cache | 1 | 92 | 24 | 1.62 | 4 (A) | 56.9 |
 | Monitoring | 1 | 70 | 9 | 1.89 | 3 (A) | 67.2 |
 | API layer | 11 | 644 | 33 | 2.09 | 5 (A) | 85.8 |
-| Shared (config, schemas, errors, security, data) | 9 | 918 | 109 | 1.49 | 10 (B) | 71.1 |
-| **Total** | 40 | 4018 | 358 | 2.56 | 15 | 71.8 |
+| Shared (config, schemas, errors, security, data) | 9 | 935 | 109 | 1.49 | 10 (B) | 71.1 |
+| **Total** | 40 | 4116 | 360 | 2.54 | 13 | 71.8 |
 
-**Cyclomatic complexity grades, all functions:** A: 327 · B: 27 · C: 4 · D: 0 · E: 0 · F: 0
+**Cyclomatic complexity grades, all functions:** A: 330 · B: 27 · C: 3 · D: 0 · E: 0 · F: 0
 
 **Maintainability index grades, all files:** A: 40 · B: 0 · C: 0
 
@@ -46,7 +46,6 @@ push and fails if any function's cyclomatic complexity exceeds 15.
 
 | CC | Function |
 | ---: | --- |
-| 15 (C) | `backend/app/modules/customer_data/adapter.py::classify_inquiry` |
 | 13 (C) | `backend/app/modules/customer_data/member_record.py::extract_candidates` |
 | 12 (C) | `backend/app/modules/customer_data/member_record.py::MemberRecordService._validated` |
 | 11 (C) | `backend/app/modules/ai_integration/service.py::AIIntegrationService.generate_response` |
@@ -54,6 +53,7 @@ push and fails if any function's cyclomatic complexity exceeds 15.
 | 10 (B) | `backend/app/modules/customer_data/member_record.py::_rows_from_csv` |
 | 10 (B) | `backend/app/modules/ai_integration/recommender.py::_matched_terms` |
 | 10 (B) | `backend/app/modules/ai_integration/providers/builtin.py::_next_steps` |
+| 10 (B) | `backend/app/modules/ai_integration/providers/anthropic_provider.py::AnthropicProvider._parse` |
 <!-- quality-report:end -->
 
 ## What the numbers say
