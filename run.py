@@ -182,12 +182,57 @@ def _requirements_hash() -> str:
 _NPM_NAMES = ("npm.cmd", "npm.exe", "npm") if IS_WINDOWS else ("npm",)
 
 
+def _default_node_dirs() -> list[Path]:
+    """Where the official installers put Node, in case PATH has not caught up.
+
+    The Windows installer writes the system PATH, but a terminal -- or the
+    editor that spawned it -- started before the install keeps the old
+    environment until it is restarted, and people reasonably read "I installed
+    Node" as "Node is installed". Looking in the standard places turns a
+    confusing dead end into a working start.
+    """
+    if IS_WINDOWS:
+        roots = [
+            (os.environ.get("ProgramFiles") or r"C:\Program Files", "nodejs"),
+            (os.environ.get("ProgramFiles(x86)") or r"C:\Program Files (x86)", "nodejs"),
+            (os.environ.get("LOCALAPPDATA"), r"Programs\nodejs"),
+            (os.environ.get("APPDATA"), "npm"),
+        ]
+        return [Path(root) / leaf for root, leaf in roots if root]
+    return [Path(p) for p in ("/usr/local/bin", "/opt/homebrew/bin", "/usr/bin")]
+
+
 def npm_command() -> str | None:
     for name in _NPM_NAMES:
         found = shutil.which(name)
         if found:
             return found
+    for directory in _default_node_dirs():
+        for name in _NPM_NAMES:
+            candidate = directory / name
+            if candidate.is_file():
+                return str(candidate)
     return None
+
+
+def put_node_on_path() -> None:
+    """Make sure the npm we found can reach its own node.
+
+    npm is a wrapper that shells out to `node`, so an npm located outside PATH
+    is useless on its own. This runs once at startup and prepends its
+    directory to this process's PATH, which every child then inherits. It
+    changes nothing when npm was on PATH already.
+    """
+    if any(shutil.which(name) for name in _NPM_NAMES):
+        # Already reachable. Touching PATH here would only risk confusing npm
+        # about where it is installed.
+        return
+    npm = npm_command()
+    if npm is None:
+        return
+    directory = str(Path(npm).parent)
+    os.environ["PATH"] = directory + os.pathsep + os.environ.get("PATH", "")
+    info(f"Found Node in {directory} (it was not on PATH).")
 
 
 # node_modules holds compiled binaries for one operating system and CPU. A copy
@@ -337,9 +382,7 @@ def try_create_postgres_database(python: Path, url: str) -> bool:
         "with engine.connect() as connection:\n"
         "    connection.execute(text(f'CREATE DATABASE \"{name}\"'))\n"
     )
-    created = subprocess.run(
-        [str(python), "-c", script, server_url, database], capture_output=True
-    )
+    created = subprocess.run([str(python), "-c", script, server_url, database], capture_output=True)
     return created.returncode == 0
 
 
@@ -834,6 +877,9 @@ def main() -> int:
     env = os.environ.copy()
     env.setdefault("ENVIRONMENT", "development")
     env.setdefault("PYTHONUNBUFFERED", "1")
+
+    put_node_on_path()
+    env["PATH"] = os.environ["PATH"]
 
     if args.check:
         # Checks run against the configured database, exactly as CI does.
