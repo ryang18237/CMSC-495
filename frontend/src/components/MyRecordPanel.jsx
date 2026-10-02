@@ -25,6 +25,14 @@ const KIND_LABELS = {
 // first comes first.
 const KIND_ORDER = ['CREDENTIAL', 'EDUCATION', 'EXPERIENCE', 'TRAINING']
 
+// An empty card should say what belongs in it, in the member's own terms.
+const EMPTY_HINTS = {
+  CREDENTIAL: 'Certifications and licences you hold, such as CompTIA Security+.',
+  TRAINING: 'Military or civilian courses you have completed.',
+  EDUCATION: 'Degrees and programmes, finished or in progress.',
+  EXPERIENCE: 'Roles you have held, military or civilian.',
+}
+
 // A worked example beats a label: people fill a field faster when they can
 // see the shape of the answer.
 const PLACEHOLDERS = {
@@ -187,16 +195,25 @@ export default function MyRecordPanel({ session, onChange })
   const completeness = record?.completeness
   const selectedCount = candidates ? candidates.filter((_, index) => chosen[index]).length : 0
 
-  // Group by kind so the panel reads like a profile rather than one long list.
+  // Every kind gets a card, empty ones included. Hiding the empty ones made
+  // the panel shorter but left no sign that education or experience were
+  // things you could add at all.
   const grouped = KIND_ORDER.map((groupKind) => [
     groupKind,
     added.filter((item) => item.kind === groupKind),
-  ]).filter(([, items]) => items.length > 0)
+  ])
 
   return (
     <section className="card record" aria-labelledby="record-heading">
-      <h2 id="record-heading">My profile</h2>
-      <p className="muted">Saved to your account and used in every conversation.</p>
+      <div className="profile-head">
+        <div>
+          <h2 id="record-heading">My profile</h2>
+          <p className="muted">
+            What you have done so far. Saved to your account and used in every
+            conversation and recommendation from then on.
+          </p>
+        </div>
+      </div>
 
       {completeness && (
         <div className="completeness">
@@ -219,47 +236,48 @@ export default function MyRecordPanel({ session, onChange })
         </div>
       )}
 
-      {official && (
-        <div className="record-group">
-          <h3 className="section">From your service record</h3>
-          <ul className="record-list official">
-            {[...official.credentials, ...official.completedTraining].map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-          </ul>
-        </div>
-      )}
+      <div className="profile-grid">
+        {official && (
+          <div className="record-group official">
+            <h3 className="section">From your service record</h3>
+            <ul className="record-list official">
+              {[...official.credentials, ...official.completedTraining].map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+            <p className="record-empty">Read-only, from the personnel system.</p>
+          </div>
+        )}
 
-      {added.length === 0 && (
-        <p className="muted">
-          Nothing added yet. Type an item below, or upload a resume or transcript.
-        </p>
-      )}
-
-      {grouped.map(([groupKind, items]) => (
-        <div className="record-group" key={groupKind}>
-          <h3 className="section">{KIND_LABELS[groupKind]}</h3>
-          <ul className="record-list">
-            {items.map((item) => (
-              <li key={item.itemId}>
-                <span>
-                  {item.name}
-                  {item.organization && <span className="muted"> &middot; {item.organization}</span>}
-                  {item.detail && <span className="muted"> &middot; {item.detail}</span>}
-                </span>
-                <button
-                  type="button"
-                  className="link"
-                  aria-label={`Remove ${item.name}`}
-                  onClick={() => remove(item.itemId)}
-                >
-                  Remove
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      ))}
+        {grouped.map(([groupKind, items]) => (
+          <div className="record-group" key={groupKind}>
+            <h3 className="section">{KIND_LABELS[groupKind]}</h3>
+            {items.length === 0 ? (
+              <p className="record-empty">{EMPTY_HINTS[groupKind]}</p>
+            ) : (
+              <ul className="record-list">
+                {items.map((item) => (
+                  <li key={item.itemId}>
+                    <span>
+                      {item.name}
+                      {item.organization && <span className="muted"> &middot; {item.organization}</span>}
+                      {item.detail && <span className="muted"> &middot; {item.detail}</span>}
+                    </span>
+                    <button
+                      type="button"
+                      className="link"
+                      aria-label={`Remove ${item.name}`}
+                      onClick={() => remove(item.itemId)}
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ))}
+      </div>
 
       <form className="record-add" onSubmit={add}>
         <label className="visually-hidden" htmlFor="record-kind">Type</label>
@@ -294,19 +312,24 @@ export default function MyRecordPanel({ session, onChange })
         </button>
       </form>
 
-      <div className="record-upload">
-        <label htmlFor="record-file" className="muted">
-          Or upload a resume or transcript (.txt, .csv, .pdf)
-        </label>
-        <input
-          id="record-file"
-          ref={fileRef}
-          type="file"
-          accept=".txt,.csv,.pdf"
-          onChange={upload}
-          disabled={busy}
-        />
-      </div>
+      {/* Typing an entry is the main path. Importing a file is a shortcut for
+          someone with a long record, so it stays folded away. */}
+      <details className="record-import">
+        <summary>Have a resume or transcript? Import it instead</summary>
+        <div className="record-upload">
+          <label htmlFor="record-file" className="muted">
+            .txt, .csv or .pdf. Nothing is saved until you have checked it.
+          </label>
+          <input
+            id="record-file"
+            ref={fileRef}
+            type="file"
+            accept=".txt,.csv,.pdf"
+            onChange={upload}
+            disabled={busy}
+          />
+        </div>
+      </details>
 
       {candidates && (
         <div className="record-review" role="group" aria-label="Items found in your file">

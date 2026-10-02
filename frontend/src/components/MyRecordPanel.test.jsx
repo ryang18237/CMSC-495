@@ -111,8 +111,11 @@ describe('MyRecordPanel', () =>
     vi.spyOn(api, 'addRecordItems').mockResolvedValue({ added: [], alreadyOnRecord: 0 })
     render(<MyRecordPanel session={session} />)
 
+    // Importing is folded away behind a summary now, so open it first.
+    await userEvent.click(await screen.findByText(/import it instead/i))
+
     const file = new File(['Cisco CCNA\nBasic Leader Course'], 'list.txt', { type: 'text/plain' })
-    await userEvent.upload(await screen.findByLabelText(/upload a resume/i), file)
+    await userEvent.upload(await screen.findByLabelText(/\.txt, \.csv or \.pdf/i), file)
 
     expect(await screen.findByText('Cisco CCNA')).toBeInTheDocument()
     expect(api.importRecord).toHaveBeenCalledWith('tok', 'list.txt', expect.any(String))
