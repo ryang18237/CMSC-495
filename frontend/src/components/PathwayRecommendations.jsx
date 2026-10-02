@@ -34,9 +34,14 @@ function reasonText(item)
   return 'A common starting point'
 }
 
+// Five cards in a 340px column is a wall. Three is a shortlist someone will
+// actually read, and the rest are one click away.
+const SHOWN_BY_DEFAULT = 3
+
 export default function PathwayRecommendations({ session, refreshKey = 0 })
 {
   const [state, setState] = useState({ status: 'loading', data: null, error: null })
+  const [showAll, setShowAll] = useState(false)
 
   // refreshKey changes whenever My record changes, so the list is re-ranked
   // against the member's latest record without a page reload.
@@ -83,25 +88,42 @@ export default function PathwayRecommendations({ session, refreshKey = 0 })
           </p>
 
           <ol className="pathway-list">
-            {state.data.recommendations.map((item) => (
-              <li key={item.pathwayId} className="pathway">
+            {(showAll
+              ? state.data.recommendations
+              : state.data.recommendations.slice(0, SHOWN_BY_DEFAULT)
+            ).map((item, index) => (
+              <li
+                key={item.pathwayId}
+                className={`pathway ${index === 0 ? 'top' : ''}`}
+              >
+                {/* The rank is the first thing read, so the strongest match is
+                    obvious without comparing five pills to each other. */}
+                <span className="pathway-rank" aria-hidden="true">{index + 1}</span>
                 <div className="pathway-head">
                   <strong>{item.title}</strong>
                   <span className={`pill strength ${item.strength.toLowerCase()}`}>
                     {STRENGTH_LABELS[item.strength] ?? item.strength}
                   </span>
                 </div>
-                <p className="pathway-reason">{reasonText(item)}</p>
-                <p className="muted">
+                <p className="pathway-meta">
                   {KIND_LABELS[item.kind] ?? item.kind} &middot; {item.field}
                 </p>
+                <p className="pathway-reason">{reasonText(item)}</p>
                 <p className="pathway-summary">{item.summary}</p>
                 {item.matchedTerms.length > 0 && (
-                  <p className="muted">Matched on: {item.matchedTerms.join(', ')}</p>
+                  <p className="pathway-meta">Matched on {item.matchedTerms.join(', ')}</p>
                 )}
               </li>
             ))}
           </ol>
+
+          {state.data.recommendations.length > SHOWN_BY_DEFAULT && (
+            <button type="button" className="link" onClick={() => setShowAll(!showAll)}>
+              {showAll
+                ? 'Show fewer'
+                : `Show ${state.data.recommendations.length - SHOWN_BY_DEFAULT} more`}
+            </button>
+          )}
 
           <p className="muted disclaimer">{state.data.disclaimer}</p>
         </>

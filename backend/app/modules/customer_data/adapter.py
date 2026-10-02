@@ -11,6 +11,7 @@ contract the rest of the platform depends on. Two things are going on here:
     sent to the AI provider limited to what the question actually requires.
 """
 
+import re
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -174,6 +175,19 @@ UNKNOWN_CONTEXT = CustomerContext(
 )
 
 
+# Words are matched on their stems. Whole-word matching meant that "what are
+# the next certs I should get?" classified as GENERAL, so the prompt carried
+# none of the member's credentials and the answer came back generic. A stem
+# covers cert, certs, certificate, certification and certified at once.
+# "certainly" is removed first: it is common, and it is not this topic.
+_CERTAINLY = re.compile(r"\bcertain\w*")
+
+
+def _mentions(text: str, stems: tuple[str, ...]) -> bool:
+    """True when any stem starts a word in `text`."""
+    return any(re.search(rf"\b{re.escape(stem)}", text) for stem in stems)
+
+
 def classify_inquiry(message: str) -> str:
     """Decide what kind of question this is, using fixed keyword rules.
 
@@ -182,7 +196,7 @@ def classify_inquiry(message: str) -> str:
     to be predictable and reviewable. Order matters: the more specific
     categories are checked first.
     """
-    lowered = message.lower()
+    lowered = _CERTAINLY.sub("", message.lower())
 
     # Asked before anything else: a member asking what the platform knows
     # about them is asking about their own profile, whatever else the
@@ -193,64 +207,62 @@ def classify_inquiry(message: str) -> str:
         "my record",
         "what do you know about me",
         "what have i",
+        "what do i have",
         "my background",
         "my experience",
-        "my qualifications",
+        "my qualification",
     )
-    if any(word in lowered for word in profile_words):
+    if _mentions(lowered, profile_words):
         return "PROFILE"
 
     # Weighing a degree against a credential is an education question even
     # though it says "certification", so this pair is checked before the
     # credential words below.
-    if ("degree" in lowered or "college" in lowered) and any(
-        word in lowered for word in ("certification", "certificate", "credential")
-    ):
+    if _mentions(lowered, ("degree", "college")) and _mentions(lowered, ("cert", "credential")):
         return "EDUCATION"
 
     credential_words = (
-        "certification",
-        "certificate",
-        "certified",
+        "cert",
         "credential",
-        "license",
-        "licensing",
+        "licen",
         "exam",
         "comptia",
+        "ccna",
         "security+",
         "pmp",
+        "badge",
     )
-    if any(word in lowered for word in credential_words):
+    if _mentions(lowered, credential_words):
         return "CREDENTIAL"
 
     education_words = (
         "degree",
         "college",
-        "university",
+        "universit",
         "school",
         "course",
         "class",
         "tuition",
         "study",
-        "studying",
-        "education",
+        "educat",
         "associate",
         "bachelor",
+        "master",
+        "gi bill",
     )
-    if any(word in lowered for word in education_words):
+    if _mentions(lowered, education_words):
         return "EDUCATION"
 
     transition_words = (
         "skillbridge",
         "internship",
         "transition",
-        "separating",
-        "separation",
+        "separat",
         "terminal leave",
         "ets",
         "getting out",
     )
-    if any(word in lowered for word in transition_words):
+    if _mentions(lowered, transition_words):
         return "TRANSITION"
 
     career_words = (
@@ -259,14 +271,19 @@ def classify_inquiry(message: str) -> str:
         "job",
         "career",
         "hiring",
+        "hire",
         "interview",
         "employer",
         "civilian",
-        "apprenticeship",
+        "apprentice",
         "salary",
         "translate",
+        "next step",
+        "what should i",
+        "recommend",
+        "advice",
     )
-    if any(word in lowered for word in career_words):
+    if _mentions(lowered, career_words):
         return "CAREER"
 
     return "GENERAL"

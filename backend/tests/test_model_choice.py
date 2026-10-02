@@ -270,6 +270,49 @@ def test_personal_answers_still_pass_validation(client: TestClient, customer_aut
         assert reply["status"] == "ANSWERED", question
 
 
+@pytest.mark.usefixtures("no_keys")
+@pytest.mark.parametrize(
+    "question",
+    [
+        # The phrasing that was escalated as unsupported: "certs" matched no
+        # keyword, so the single most common question this service exists for
+        # never reached the advisor.
+        "what are the next certs I should get?",
+        "What cert should I go for next?",
+        "Any certifications worth getting?",
+        "What should I do next?",
+        "What do you recommend for my career?",
+        "Which licences could I qualify for?",
+    ],
+)
+def test_ordinary_phrasings_are_answered_not_escalated(
+    client: TestClient, customer_auth, question: str
+):
+    """A member should not have to guess the vocabulary the matcher knows."""
+    conversation = _conversation(client, customer_auth)
+    reply = client.post(
+        f"/api/v1/conversations/{conversation}/messages",
+        headers=customer_auth,
+        json={"message": question},
+    ).json()
+
+    assert reply["status"] == "ANSWERED", question
+    assert reply.get("escalationReason") is None, question
+
+
+@pytest.mark.usefixtures("no_keys")
+def test_a_genuinely_off_topic_question_still_escalates(client: TestClient, customer_auth):
+    """The wider vocabulary must not turn the advisor into a general chatbot."""
+    conversation = _conversation(client, customer_auth)
+    reply = client.post(
+        f"/api/v1/conversations/{conversation}/messages",
+        headers=customer_auth,
+        json={"message": "What is the capital of France?"},
+    ).json()
+
+    assert reply["escalationReason"] == "UNSUPPORTED_TOPIC"
+
+
 def test_service_reports_which_provider_is_in_use():
     assert AIIntegrationService(BuiltInAdvisor()).provider_name == "builtin"
 

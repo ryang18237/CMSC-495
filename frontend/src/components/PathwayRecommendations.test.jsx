@@ -54,7 +54,7 @@ describe('PathwayRecommendations', () =>
     expect(screen.getByText('Next step after CompTIA A+')).toBeInTheDocument()
     expect(screen.getByText('Builds on Network Administration Course')).toBeInTheDocument()
     expect(screen.getByText('Strong match')).toBeInTheDocument()
-    expect(screen.getByText('Matched on: information assurance, network')).toBeInTheDocument()
+    expect(screen.getByText('Matched on information assurance, network')).toBeInTheDocument()
     expect(screen.getByText('Suggestions are a starting point.')).toBeInTheDocument()
   })
 

@@ -41,11 +41,109 @@ from app.modules.ai_integration.recommender import MemberProfile, recommend
 FAILURE_TRIGGER = "__force_ai_failure__"
 UNSUPPORTED_MARKER = "UNSUPPORTED_TOPIC"
 
+# Topics are matched on word stems, not whole words. Matching "certification"
+# literally meant that "what are the next certs I should get?" -- an ordinary
+# way to ask the single most common question this service exists for -- matched
+# nothing and was escalated to a human as an unsupported topic. A stem catches
+# cert, certs, certificate, certification and certified at once, and the same
+# for licen(ce|se|sed), qualif(ied|ication) and the rest.
+_CREDENTIAL_TOPIC = (
+    "cert",
+    "credential",
+    "licen",
+    "exam",
+    "comptia",
+    "ccna",
+    "security+",
+    "qualification",
+    "badge",
+)
+_NEXT_STEP_TOPIC = (
+    "career",
+    "job",
+    "next step",
+    "next move",
+    "what next",
+    "what should i",
+    "what do i do",
+    "where do i start",
+    "get started",
+    "option",
+    "path",
+    "advance",
+    "progress",
+    "recommend",
+    "suggest",
+    "advice",
+    "worth getting",
+    "should i get",
+)
+_DEGREE_TOPIC = (
+    "degree",
+    "college",
+    "universit",
+    "tuition",
+    "school",
+    "associate",
+    "bachelor",
+    "master",
+    "gi bill",
+    "major",
+)
+_RESUME_TOPIC = (
+    "resume",
+    "cv",
+    "interview",
+    "hiring",
+    "hire",
+    "employer",
+    "civilian",
+    "translate",
+    "cover letter",
+    "linkedin",
+    "apply",
+)
+_EXPERIENCE_TOPIC = (
+    "experience",
+    "background",
+    "what have i",
+    "what do i have",
+    "my profile",
+    "my record",
+    "qualified",
+)
+
+# "certainly" is not a question about certifications, and it is common enough
+# in ordinary writing to be worth removing before anything is matched.
+_FALSE_FRIENDS = re.compile(r"\bcertain\w*")
+
+
+def _mentions(text: str, stems: tuple[str, ...]) -> bool:
+    """True when any stem starts a word in `text`.
+
+    A stem may be several words ("next step"), in which case it has to appear
+    in that order. Matching at a word boundary rather than anywhere in the
+    string keeps "path" from firing on "sympathy".
+    """
+    return any(re.search(rf"\b{re.escape(stem)}", text) for stem in stems)
+
+
+_TRANSITION_TOPIC = (
+    "skillbridge",
+    "internship",
+    "transition",
+    "separat",
+    "getting out",
+    "ets",
+    "terminal leave",
+)
+_APPRENTICESHIP_TOPIC = ("apprentice", "trade", "on the job", "journeyman", "union")
+
 # Ordered most specific first, because a question about a certification exam
 # also mentions studying.
 _TOPIC_REPLIES: list[tuple[tuple[str, ...], str]] = [
     (
-        ("certification", "certificate", "credential", "license", "exam", "comptia"),
+        _CREDENTIAL_TOPIC,
         "Looking at the training you have already completed, a foundational IT "
         "certification is the closest next step -- your network and information "
         "assurance coursework covers a good share of the exam objectives, so you are "
@@ -54,7 +152,7 @@ _TOPIC_REPLIES: list[tuple[tuple[str, ...], str]] = [
         "the funding options with you.",
     ),
     (
-        ("degree", "college", "university", "tuition", "school", "associate", "bachelor"),
+        _DEGREE_TOPIC,
         "Both routes are open to you. A credential is shorter and aimed at a specific "
         "role, so it suits getting hired sooner in a field you already know; a degree "
         "takes longer and unlocks roles that list one as a requirement. Plenty of "
@@ -62,7 +160,7 @@ _TOPIC_REPLIES: list[tuple[tuple[str, ...], str]] = [
         "A counsellor can help you map the sequence against your separation date.",
     ),
     (
-        ("skillbridge", "internship", "transition", "separating", "separation", "getting out"),
+        _TRANSITION_TOPIC,
         "Industry internships are arranged well ahead of time and need command "
         "approval, so the useful question is when to start asking rather than whether "
         "you qualify. Several months before you want the placement to begin is "
@@ -70,21 +168,21 @@ _TOPIC_REPLIES: list[tuple[tuple[str, ...], str]] = [
         "now.",
     ),
     (
-        ("resume", "cv", "interview", "hiring", "employer", "civilian", "translate"),
+        _RESUME_TOPIC,
         "Lead with what you were responsible for rather than the job title. Your "
         "completed training translates well into systems and network administration "
         "language: scope of systems, people trained, and what you were accountable "
         "for. List courses by what they taught, not by course number.",
     ),
     (
-        ("apprenticeship", "trade", "on the job", "hours"),
+        _APPRENTICESHIP_TOPIC,
         "Apprenticeships pay while you train and finish in a recognised "
         "qualification, which suits technical and trade fields. Prior military "
         "training sometimes counts toward the required hours, so ask a sponsor to "
         "review your completed courses before you enrol.",
     ),
     (
-        ("career", "job", "next step", "what should i do", "options", "path"),
+        _NEXT_STEP_TOPIC,
         "Based on what you have finished so far, the nearest civilian roles are in "
         "systems and network administration. The shortest path is usually to add a "
         "foundational certification on top of the training you already hold, then "
@@ -94,12 +192,6 @@ _TOPIC_REPLIES: list[tuple[tuple[str, ...], str]] = [
 
 
 MODEL = "skillbridge-advisor-v3"
-
-_CREDENTIAL_TOPIC = ("certification", "certificate", "credential", "license", "exam", "comptia")
-_NEXT_STEP_TOPIC = ("career", "job", "next step", "what should i do", "options", "path")
-_DEGREE_TOPIC = ("degree", "college", "university", "tuition", "school", "associate", "bachelor")
-_RESUME_TOPIC = ("resume", "cv", "interview", "hiring", "employer", "civilian", "translate")
-_EXPERIENCE_TOPIC = ("experience", "background", "what have i", "my profile", "qualified")
 
 
 def _fact(system: str, label: str) -> list[str]:
@@ -287,14 +379,16 @@ class BuiltInAdvisor(AIProvider):
         if FAILURE_TRIGGER in lowered:
             raise AIProviderError("Simulated provider outage.", retryable=True)
 
-        personal = self._personal_reply(prompt.system, lowered)
+        topic_text = _FALSE_FRIENDS.sub("", lowered)
+
+        personal = self._personal_reply(prompt.system, topic_text)
         if personal:
             return ProviderResponse(
                 text=personal + self._grounding(prompt), model=MODEL, stop_reason="end_turn"
             )
 
         for keywords, reply in _TOPIC_REPLIES:
-            if any(keyword in lowered for keyword in keywords):
+            if _mentions(topic_text, keywords):
                 return ProviderResponse(
                     text=reply + self._grounding(prompt), model=MODEL, stop_reason="end_turn"
                 )
@@ -315,7 +409,7 @@ class BuiltInAdvisor(AIProvider):
             return ""
 
         for topic, compose in self._ANSWERS:
-            if any(word in lowered for word in topic):
+            if _mentions(lowered, topic):
                 reply = compose(facts)
                 if reply:
                     return reply
