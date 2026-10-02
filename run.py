@@ -176,8 +176,18 @@ def _requirements_hash() -> str:
     return digest.hexdigest()[:16]
 
 
+# Windows installs npm as a batch file, so `npm` alone finds nothing unless the
+# shell expands it; nvm-windows and fnm shims vary again. Try each spelling
+# rather than reporting Node as missing on a machine that has it.
+_NPM_NAMES = ("npm.cmd", "npm.exe", "npm") if IS_WINDOWS else ("npm",)
+
+
 def npm_command() -> str | None:
-    return shutil.which("npm.cmd") if IS_WINDOWS else shutil.which("npm")
+    for name in _NPM_NAMES:
+        found = shutil.which(name)
+        if found:
+            return found
+    return None
 
 
 # node_modules holds compiled binaries for one operating system and CPU. A copy
@@ -694,8 +704,10 @@ def serve(python: Path, env: dict[str, str], label: str, args: argparse.Namespac
         if args.api_only:
             info("Web client skipped (--api-only).")
         elif npm is None:
-            warn("npm was not found, so only the API is running.")
-            info("Install Node.js from https://nodejs.org to get the web interface.")
+            warn("Node.js was not found, so the web interface cannot start.")
+            info("The API below works, but the pages people actually use will not.")
+            info("Install the LTS build from https://nodejs.org, open a new terminal")
+            info("and run this script again.")
 
         if serve_web:
             ensure_frontend_environment(npm, force=args.reinstall)  # type: ignore[arg-type]
@@ -742,17 +754,28 @@ def _print_banner(target: str, label: str, serve_web: bool) -> None:
     print(f"  API            {API_URL}   (docs at {API_URL}/docs)")
     if serve_web:
         print(f"  Web client     {WEB_URL}")
+    else:
+        print("  Web client     not running -- this is the API only")
     print()
-    print("  Click 'Continue as a member' or 'Continue as a counsellor'.")
-    print("  Or sign in by hand:")
+
+    if not serve_web:
+        # Saying "click Continue as a member" when there is no page to click on
+        # is how someone ends up thinking the program is broken.
+        print("  There is no sign-in page in this mode. What you can open is the")
+        print("  API reference, where each endpoint has a 'Try it out' button.")
+        print("  Start with POST /api/v1/auth/login and these accounts:")
+    else:
+        print("  Click 'Continue as a member' or 'Continue as a counsellor'.")
+        print("  Or sign in by hand:")
     print(f"    member@example.com      {DEMO_PASSWORD}   (member chat)")
     print(f"    counselor@example.com   {DEMO_PASSWORD}   (counsellor dashboard)")
     print()
-    print("  In the chat, try:")
-    print('    "Which certification should I work toward next?"   -> answered')
-    print('    "I want to speak to a human please"                -> handed to a counsellor')
-    print('    "What is the capital of France?"                   -> unsupported topic')
-    print()
+    if serve_web:
+        print("  In the chat, try:")
+        print('    "Which certification should I work toward next?"   -> answered')
+        print('    "I want to speak to a human please"                -> handed to a counsellor')
+        print('    "What is the capital of France?"                   -> unsupported topic')
+        print()
     print("  Press Ctrl+C to stop.")
     print(_paint(line, "1;32"))
     print(flush=True)
