@@ -9,18 +9,28 @@ import logging
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.responses import JSONResponse, Response
+from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi.staticfiles import StaticFiles
+from starlette.responses import HTMLResponse, JSONResponse, Response
 
-from app.api.v1 import agent, agent_handoff, auth, conversations, health, ops
+from app.api.v1 import agent, agent_handoff, auth, conversations, health, ops, profile
 from app.config import get_settings
 from app.errors import error_body, register_exception_handlers
 from app.modules.monitoring.service import get_metrics
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger("app.startup")
+
+# Swagger UI's stylesheet and script, vendored under app/static/. FastAPI's
+# default /docs page pulls both from a public CDN, so on a machine that is
+# offline, behind a proxy or on a restricted network the page arrives as
+# unstyled text. Serving our own copies makes /docs render the same way every
+# time, and keeps another project's favicon off our page.
+STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 
 @asynccontextmanager
@@ -58,6 +68,28 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
 
 
+# Groups shown in the interactive documentation at /docs, in this order.
+OPENAPI_TAGS = [
+    {"name": "health", "description": "Liveness and dependency status. No sign-in required."},
+    {"name": "auth", "description": "Sign in and receive a bearer token."},
+    {
+        "name": "conversations",
+        "description": "A member's conversation with the assistant: send, read, escalate, rate.",
+    },
+    {
+        "name": "agent",
+        "description": "Counsellor dashboard: the escalation queue, replies and review. "
+        "Every route requires the AGENT role.",
+    },
+    {
+        "name": "profile",
+        "description": "My record: the member's service record and the training and "
+        "credentials they added, used in every conversation. CUSTOMER role only.",
+    },
+    {"name": "ops", "description": "Operational metrics for this instance. AGENT role only."},
+]
+
+
 def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(
@@ -65,18 +97,36 @@ def create_app() -> FastAPI:
         version=settings.app_version,
         lifespan=lifespan,
         description=(
-            "Alpha release. A free education and professional development service for "
-            "military members and veterans. Modular monolith with an isolated AI "
-            "Integration Module, deterministic escalation rules and asynchronous "
-            "feedback analysis."
+            "A free education and professional development service for military "
+            "members and veterans. Modular monolith with an isolated AI Integration "
+            "Module, deterministic escalation rules and asynchronous feedback analysis. "
+            'Every error uses one envelope: `{"error": {"code", "message", '
+            '"requestId"}}`. The written contract is docs/API.md.'
         ),
+        openapi_tags=OPENAPI_TAGS,
+        # Replaced below by the same page served from our own files.
+        docs_url=None,
+        redoc_url=None,
     )
+
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+    @app.get("/docs", include_in_schema=False)
+    async def swagger_ui() -> HTMLResponse:
+        """The interactive API reference, with no call out to a CDN."""
+        return get_swagger_ui_html(
+            openapi_url="/openapi.json",
+            title=f"{settings.app_name} API",
+            swagger_js_url="/static/swagger-ui-bundle.js",
+            swagger_css_url="/static/swagger-ui.css",
+            swagger_favicon_url="data:,",
+        )
 
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,
         allow_credentials=False,
-        allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
+        allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type"],
     )
 
@@ -89,8 +139,13 @@ def create_app() -> FastAPI:
         request.state.request_id = request_id
 
         declared = request.headers.get("content-length")
+        limit = (
+            settings.max_upload_bytes
+            if request.url.path == "/api/v1/profile/record/import"
+            else settings.max_request_bytes
+        )
         if declared is not None and declared.isdigit():
-            if int(declared) > settings.max_request_bytes:
+            if int(declared) > limit:
                 return JSONResponse(
                     status_code=413,
                     content=error_body(
@@ -116,6 +171,7 @@ def create_app() -> FastAPI:
     app.include_router(agent.router)
     app.include_router(agent_handoff.router)
     app.include_router(ops.router)
+    app.include_router(profile.router)
 
     return app
 

@@ -24,10 +24,12 @@ still work exactly as before for anyone who prefers to run them by hand.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import platform
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import time
@@ -121,22 +123,116 @@ def ensure_backend_environment(force: bool = False) -> Path:
         [str(python), "-c", "import fastapi, sqlalchemy, jwt, bcrypt"],
         capture_output=True,
     )
+    # A teammate's existing environment has the core packages but not a tool
+    # added later (a new test plugin, say), so the probe alone would pass and
+    # `run.py --check` would then fail on the missing import. Recording what the
+    # environment was installed from catches that and installs the difference.
+    current = _requirements_hash()
+    try:
+        recorded = REQUIREMENTS_MARKER.read_text(encoding="utf-8").strip()
+    except OSError:
+        recorded = ""
+
     if probe.returncode != 0:
         step("Installing backend dependencies (first run only, this takes a minute)")
         subprocess.run(
             [str(python), "-m", "pip", "install", "--quiet", "--upgrade", "pip"],
             check=True,
         )
+    elif recorded != current:
+        step("Updating backend dependencies (the requirements files changed)")
+
+    if probe.returncode != 0 or recorded != current:
         subprocess.run(
-            [str(python), "-m", "pip", "install", "-r", str(BACKEND / "requirements-dev.txt")],
+            [
+                str(python),
+                "-m",
+                "pip",
+                "install",
+                "--quiet",
+                "-r",
+                str(BACKEND / "requirements-dev.txt"),
+            ],
             check=True,
         )
+        try:
+            REQUIREMENTS_MARKER.write_text(current, encoding="utf-8")
+        except OSError:
+            pass
 
     return python
 
 
+REQUIREMENTS_MARKER = VENV / ".requirements-hash"
+
+
+def _requirements_hash() -> str:
+    digest = hashlib.sha256()
+    for name in ("requirements.txt", "requirements-dev.txt"):
+        try:
+            digest.update((BACKEND / name).read_bytes())
+        except OSError:
+            pass
+    return digest.hexdigest()[:16]
+
+
+# Windows installs npm as a batch file, so `npm` alone finds nothing unless the
+# shell expands it; nvm-windows and fnm shims vary again. Try each spelling
+# rather than reporting Node as missing on a machine that has it.
+_NPM_NAMES = ("npm.cmd", "npm.exe", "npm") if IS_WINDOWS else ("npm",)
+
+
+def _default_node_dirs() -> list[Path]:
+    """Where the official installers put Node, in case PATH has not caught up.
+
+    The Windows installer writes the system PATH, but a terminal -- or the
+    editor that spawned it -- started before the install keeps the old
+    environment until it is restarted, and people reasonably read "I installed
+    Node" as "Node is installed". Looking in the standard places turns a
+    confusing dead end into a working start.
+    """
+    if IS_WINDOWS:
+        roots = [
+            (os.environ.get("ProgramFiles") or r"C:\Program Files", "nodejs"),
+            (os.environ.get("ProgramFiles(x86)") or r"C:\Program Files (x86)", "nodejs"),
+            (os.environ.get("LOCALAPPDATA"), r"Programs\nodejs"),
+            (os.environ.get("APPDATA"), "npm"),
+        ]
+        return [Path(root) / leaf for root, leaf in roots if root]
+    return [Path(p) for p in ("/usr/local/bin", "/opt/homebrew/bin", "/usr/bin")]
+
+
 def npm_command() -> str | None:
-    return shutil.which("npm.cmd") if IS_WINDOWS else shutil.which("npm")
+    for name in _NPM_NAMES:
+        found = shutil.which(name)
+        if found:
+            return found
+    for directory in _default_node_dirs():
+        for name in _NPM_NAMES:
+            candidate = directory / name
+            if candidate.is_file():
+                return str(candidate)
+    return None
+
+
+def put_node_on_path() -> None:
+    """Make sure the npm we found can reach its own node.
+
+    npm is a wrapper that shells out to `node`, so an npm located outside PATH
+    is useless on its own. This runs once at startup and prepends its
+    directory to this process's PATH, which every child then inherits. It
+    changes nothing when npm was on PATH already.
+    """
+    if any(shutil.which(name) for name in _NPM_NAMES):
+        # Already reachable. Touching PATH here would only risk confusing npm
+        # about where it is installed.
+        return
+    npm = npm_command()
+    if npm is None:
+        return
+    directory = str(Path(npm).parent)
+    os.environ["PATH"] = directory + os.pathsep + os.environ.get("PATH", "")
+    info(f"Found Node in {directory} (it was not on PATH).")
 
 
 # node_modules holds compiled binaries for one operating system and CPU. A copy
@@ -149,6 +245,23 @@ PLATFORM_MARKER = "node_modules/.install-platform"
 
 def _platform_tag() -> str:
     return f"{platform.system()}-{platform.machine()}"
+
+
+def _lock_hash() -> str:
+    try:
+        return hashlib.sha256((FRONTEND / "package-lock.json").read_bytes()).hexdigest()[:16]
+    except OSError:
+        return ""
+
+
+def _marker_value() -> str:
+    """Platform the tree was built for, and the lockfile it was built from.
+
+    The platform half catches node_modules copied between machines; the lockfile
+    half catches a pull that added a package, which would otherwise surface as
+    "Cannot find module" the first time a teammate runs the new script.
+    """
+    return f"{_platform_tag()}:{_lock_hash()}"
 
 
 def _frontend_toolchain_loads() -> bool:
@@ -177,7 +290,7 @@ def _npm_install(npm: str) -> None:
         warn("The install failed. Clearing node_modules and trying once more.")
         shutil.rmtree(FRONTEND / "node_modules", ignore_errors=True)
         subprocess.run([npm, "install", "--no-audit", "--no-fund"], cwd=FRONTEND, check=True)
-    (FRONTEND / PLATFORM_MARKER).write_text(_platform_tag(), encoding="utf-8")
+    (FRONTEND / PLATFORM_MARKER).write_text(_marker_value(), encoding="utf-8")
 
 
 def ensure_frontend_environment(npm: str, force: bool = False) -> None:
@@ -195,19 +308,20 @@ def ensure_frontend_environment(npm: str, force: bool = False) -> None:
         except OSError:
             pass
 
-        if recorded == tag:
+        if recorded == _marker_value():
             return
-        if not recorded and _frontend_toolchain_loads():
-            # Installed by hand rather than by this script, and healthy.
-            try:
-                marker.write_text(tag, encoding="utf-8")
-            except OSError:
-                pass
+        recorded_platform = recorded.partition(":")[0]
+        if recorded_platform == tag or (not recorded and _frontend_toolchain_loads()):
+            # Right platform -- only the dependency list changed, or the tree
+            # was installed by hand. An in-place install adds what is missing
+            # without throwing away what is already there.
+            step("Updating web client dependencies (package-lock.json changed)")
+            _npm_install(npm)
             return
 
         step("Repairing web client dependencies")
         info(
-            f"node_modules was installed for {recorded or 'a different platform'}; "
+            f"node_modules was installed for {recorded_platform or 'a different platform'}; "
             f"this machine is {tag}."
         )
         shutil.rmtree(modules, ignore_errors=True)
@@ -268,9 +382,7 @@ def try_create_postgres_database(python: Path, url: str) -> bool:
         "with engine.connect() as connection:\n"
         "    connection.execute(text(f'CREATE DATABASE \"{name}\"'))\n"
     )
-    created = subprocess.run(
-        [str(python), "-c", script, server_url, database], capture_output=True
-    )
+    created = subprocess.run([str(python), "-c", script, server_url, database], capture_output=True)
     return created.returncode == 0
 
 
@@ -370,6 +482,170 @@ class Service:
                 pass
 
 
+# ---------------------------------------------------------------------------
+# Ports
+#
+# A previous run that was not shut down cleanly -- a terminal window closed, a
+# laptop put to sleep, a crash -- leaves its servers running in the background
+# because each one runs in its own process group. The next run then fails with
+# "Address already in use", and worse, the health check can succeed against the
+# *old* server, so the launcher reports the API as ready when it is not. Every
+# run therefore checks both ports first. A leftover from this project is
+# stopped; anything else is reported and left alone.
+# ---------------------------------------------------------------------------
+def _port_in_use(port: int) -> bool:
+    # Vite listens on "localhost", which is ::1 on recent macOS and Node, so
+    # both address families are tried.
+    for family, host in ((socket.AF_INET, "127.0.0.1"), (socket.AF_INET6, "::1")):
+        try:
+            with socket.socket(family, socket.SOCK_STREAM) as probe:
+                probe.settimeout(0.5)
+                if probe.connect_ex((host, port)) == 0:
+                    return True
+        except OSError:
+            continue
+    return False
+
+
+def _listening_pids(port: int) -> list[int]:
+    pids: set[int] = set()
+    try:
+        if IS_WINDOWS:
+            output = subprocess.run(
+                ["netstat", "-ano"], capture_output=True, text=True, timeout=10
+            ).stdout
+            for line in output.splitlines():
+                parts = line.split()
+                if (
+                    len(parts) >= 5
+                    and parts[0].upper() == "TCP"
+                    and parts[1].endswith(f":{port}")
+                    and parts[3].upper() == "LISTENING"
+                    and parts[4].isdigit()
+                ):
+                    pids.add(int(parts[4]))
+        else:
+            lsof = shutil.which("lsof")
+            if lsof is None:
+                return []
+            output = subprocess.run(
+                [lsof, "-nP", f"-iTCP:{port}", "-sTCP:LISTEN", "-t"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            ).stdout
+            pids.update(int(pid) for pid in output.split() if pid.isdigit())
+    except (OSError, subprocess.SubprocessError):
+        return []
+    pids.discard(os.getpid())
+    return sorted(pids)
+
+
+def _command_line(pid: int) -> str:
+    try:
+        if IS_WINDOWS:
+            query = f"(Get-CimInstance Win32_Process -Filter 'ProcessId={pid}').CommandLine"
+            result = subprocess.run(
+                ["powershell", "-NoProfile", "-Command", query],
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+        else:
+            result = subprocess.run(
+                ["ps", "-o", "command=", "-p", str(pid)], capture_output=True, text=True, timeout=10
+            )
+        return result.stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return ""
+
+
+def _working_directory(pid: int) -> str:
+    """Where the process was started. POSIX only; Windows relies on the command line."""
+    lsof = shutil.which("lsof")
+    if IS_WINDOWS or lsof is None:
+        return ""
+    try:
+        output = subprocess.run(
+            [lsof, "-a", "-p", str(pid), "-d", "cwd", "-Fn"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        ).stdout
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return next((line[1:] for line in output.splitlines() if line.startswith("n")), "")
+
+
+def _is_ours(pid: int, command: str) -> bool:
+    """A server this project started: our paths, our API module, or run from our folder."""
+    lowered = command.lower()
+    if str(ROOT).lower() in lowered or "app.main:app" in lowered:
+        return True
+    cwd = _working_directory(pid)
+    return bool(cwd) and Path(cwd).resolve().is_relative_to(ROOT)
+
+
+def _stop_pid(pid: int) -> None:
+    try:
+        if IS_WINDOWS:
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(pid)], capture_output=True)
+        else:
+            os.kill(pid, signal.SIGTERM)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def free_port(port: int, what: str) -> bool:
+    """Make sure `port` is free, stopping a leftover run of this project if needed."""
+    if not _port_in_use(port):
+        return True
+
+    kill_hint = (
+        f"netstat -ano | findstr :{port}   then   taskkill /PID <pid> /F"
+        if IS_WINDOWS
+        else f"lsof -ti :{port} | xargs kill -9"
+    )
+    pids = _listening_pids(port)
+    if not pids:
+        fail(f"Port {port}, needed for the {what}, is already in use.")
+        info(f"Free it with:  {kill_hint}")
+        return False
+
+    commands = {pid: _command_line(pid) for pid in pids}
+    if not any(_is_ours(pid, command) for pid, command in commands.items()):
+        pid, command = next(iter(commands.items()))
+        fail(f"Port {port}, needed for the {what}, is in use by another program (pid {pid}).")
+        if command:
+            info(f"It is: {command[:100]}")
+        info(f"Close that program, or free the port with:  {kill_hint}")
+        return False
+
+    step(f"Stopping a previous run that is still holding port {port}")
+    info("(usually a terminal that was closed without Ctrl+C)")
+    for pid in pids:
+        _stop_pid(pid)
+
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        if not _port_in_use(port):
+            return True
+        time.sleep(0.3)
+
+    if not IS_WINDOWS:
+        for pid in _listening_pids(port):
+            try:
+                os.kill(pid, FORCE_SIGNAL)
+            except OSError:
+                pass
+        time.sleep(1)
+    if _port_in_use(port):
+        fail(f"Could not free port {port}.")
+        info(f"Free it with:  {kill_hint}")
+        return False
+    return True
+
+
 def wait_for(url: str, timeout: int = 60) -> bool:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -401,6 +677,13 @@ def run_checks(python: Path, env: dict[str, str], args_holder: argparse.Namespac
         if subprocess.run(command, cwd=BACKEND, env=env).returncode != 0:
             failures.append(f"backend {label}")
 
+    # The committed OpenAPI file has to match the code, or a reviewer reading
+    # the pull request diff is reading a contract the server no longer serves.
+    step("contract: docs/openapi.json is current")
+    export = [str(python), str(ROOT / "scripts" / "export_openapi.py"), "--check"]
+    if subprocess.run(export, cwd=ROOT, env=env).returncode != 0:
+        failures.append("openapi contract")
+
     npm = npm_command()
     if npm is None:
         warn("npm not found, skipping the web client checks.")
@@ -428,6 +711,11 @@ def serve(python: Path, env: dict[str, str], label: str, args: argparse.Namespac
     npm = npm_command()
 
     try:
+        if not free_port(API_PORT, "API"):
+            return 1
+        if not args.api_only and npm is not None and not free_port(WEB_PORT, "web client"):
+            return 1
+
         step("Starting the API")
         services.append(
             Service(
@@ -448,7 +736,9 @@ def serve(python: Path, env: dict[str, str], label: str, args: argparse.Namespac
             )
         )
 
-        if not wait_for(f"{API_URL}/api/v1/health"):
+        api_started = wait_for(f"{API_URL}/api/v1/health")
+        # A health response only counts if it came from the process just started.
+        if not api_started or services[-1].process.poll() is not None:
             fail("The API did not start. The error should be printed above.")
             return 1
         info(f"API ready at {API_URL} (interactive docs at {API_URL}/docs)")
@@ -457,13 +747,18 @@ def serve(python: Path, env: dict[str, str], label: str, args: argparse.Namespac
         if args.api_only:
             info("Web client skipped (--api-only).")
         elif npm is None:
-            warn("npm was not found, so only the API is running.")
-            info("Install Node.js from https://nodejs.org to get the web interface.")
+            warn("Node.js was not found, so the web interface cannot start.")
+            info("The API below works, but the pages people actually use will not.")
+            info("Install the LTS build from https://nodejs.org, open a new terminal")
+            info("and run this script again.")
 
         if serve_web:
             ensure_frontend_environment(npm, force=args.reinstall)  # type: ignore[arg-type]
             step("Starting the web client")
-            services.append(Service("web", [npm, "run", "dev"], FRONTEND, env))  # type: ignore[list-item]
+            # --strictPort: fail loudly rather than drift to 5174 while the
+            # browser is sent to 5173.
+            web_command = [npm, "run", "dev", "--", "--strictPort"]
+            services.append(Service("web", web_command, FRONTEND, env))  # type: ignore[list-item]
             if not wait_for(WEB_URL):
                 fail("The web client did not start. The error should be printed above.")
                 return 1
@@ -502,16 +797,28 @@ def _print_banner(target: str, label: str, serve_web: bool) -> None:
     print(f"  API            {API_URL}   (docs at {API_URL}/docs)")
     if serve_web:
         print(f"  Web client     {WEB_URL}")
+    else:
+        print("  Web client     not running -- this is the API only")
     print()
-    print("  Sign in with one of the seeded demo accounts:")
-    print(f"    customer@example.com   {DEMO_PASSWORD}   (support chat)")
-    print(f"    agent@example.com      {DEMO_PASSWORD}   (escalation queue)")
+
+    if not serve_web:
+        # Saying "click Continue as a member" when there is no page to click on
+        # is how someone ends up thinking the program is broken.
+        print("  There is no sign-in page in this mode. What you can open is the")
+        print("  API reference, where each endpoint has a 'Try it out' button.")
+        print("  Start with POST /api/v1/auth/login and these accounts:")
+    else:
+        print("  Click 'Continue as a member' or 'Continue as a counsellor'.")
+        print("  Or sign in by hand:")
+    print(f"    member@example.com      {DEMO_PASSWORD}   (member chat)")
+    print(f"    counselor@example.com   {DEMO_PASSWORD}   (counsellor dashboard)")
     print()
-    print("  In the chat, try:")
-    print('    "Why was I charged twice for my order?"   -> answered')
-    print('    "I want to speak to a human"              -> escalated to an agent')
-    print('    "What is the capital of France?"          -> unsupported topic')
-    print()
+    if serve_web:
+        print("  In the chat, try:")
+        print('    "Which certification should I work toward next?"   -> answered')
+        print('    "I want to speak to a human please"                -> handed to a counsellor')
+        print('    "What is the capital of France?"                   -> unsupported topic')
+        print()
     print("  Press Ctrl+C to stop.")
     print(_paint(line, "1;32"))
     print(flush=True)
@@ -525,7 +832,9 @@ def _install_signal_handlers() -> None:
 
     A process started in the background by a shell inherits SIGINT as ignored,
     so the default handler is restored explicitly. SIGTERM is translated into
-    SystemExit so the cleanup in `serve()` runs when a terminal is closed.
+    SystemExit so the cleanup in `serve()` runs on a kill, and SIGHUP -- what a
+    terminal window sends when it is closed -- is handled the same way, so
+    closing the window no longer leaves the servers running in the background.
     """
     try:
         signal.signal(signal.SIGINT, signal.default_int_handler)
@@ -535,15 +844,19 @@ def _install_signal_handlers() -> None:
     def _terminate(_signum: int, _frame: object) -> None:
         raise SystemExit(0)
 
-    try:
-        signal.signal(signal.SIGTERM, _terminate)
-    except (ValueError, OSError):
-        pass
+    for name in ("SIGTERM", "SIGHUP"):
+        sig = getattr(signal, name, None)  # SIGHUP does not exist on Windows
+        if sig is None:
+            continue
+        try:
+            signal.signal(sig, _terminate)
+        except (ValueError, OSError):
+            pass
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Start the AI-Powered Customer Service Platform locally.",
+        description="Start SkillBridge AI locally.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--check", action="store_true", help="run every check CI runs, then exit")
@@ -564,6 +877,9 @@ def main() -> int:
     env = os.environ.copy()
     env.setdefault("ENVIRONMENT", "development")
     env.setdefault("PYTHONUNBUFFERED", "1")
+
+    put_node_on_path()
+    env["PATH"] = os.environ["PATH"]
 
     if args.check:
         # Checks run against the configured database, exactly as CI does.

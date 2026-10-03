@@ -4,14 +4,13 @@ Every route derives the customer identity from the verified access token. No
 route accepts a customer identifier from the client.
 """
 
-import json
-
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_conversation_service, parse_uuid
+from app.api.v1.views import to_message_view
 from app.db import get_db
-from app.models import ConversationMessage, User
+from app.models import User
 from app.modules.conversation.service import ConversationService
 from app.modules.escalation.service import EscalationService
 from app.modules.feedback.service import FeedbackService
@@ -22,39 +21,15 @@ from app.schemas import (
     ConversationCreatedResponse,
     ConversationDetailResponse,
     ConversationStatus,
-    EscalationReason,
     EscalationRequest,
     EscalationResponse,
     FeedbackRequest,
     FeedbackResponse,
     MessageRequest,
-    MessageStatus,
-    MessageView,
 )
 from app.security import get_current_user
 
 router = APIRouter(prefix="/api/v1/conversations", tags=["conversations"])
-
-
-def _to_message_view(message: ConversationMessage) -> MessageView:
-    """Project a stored message onto the public message contract."""
-    sources: list[str] = []
-    if message.sources:
-        try:
-            sources = list(json.loads(message.sources))
-        except json.JSONDecodeError:
-            sources = []
-    return MessageView(
-        message_id=message.id,
-        sender=message.sender,
-        content=message.content,
-        status=MessageStatus(message.status) if message.status else None,
-        escalation_reason=(
-            EscalationReason(message.escalation_reason) if message.escalation_reason else None
-        ),
-        sources=sources,
-        timestamp=message.created_at,
-    )
 
 
 @router.post("", response_model=ConversationCreatedResponse, status_code=status.HTTP_201_CREATED)
@@ -100,7 +75,7 @@ def get_conversation(
         conversation_id=conversation.id,
         status=ConversationStatus(conversation.status),
         created_at=conversation.created_at,
-        messages=[_to_message_view(message) for message in conversation.messages],
+        messages=[to_message_view(message) for message in conversation.messages],
     )
 
 

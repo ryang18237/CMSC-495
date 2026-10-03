@@ -66,7 +66,7 @@ export default function LoginPanel({ onSignedIn })
 
   return (
     <div className="card login">
-      <h1>SkillBridge AI</h1>
+      <h1>SkillbridgeAI</h1>
       <p className="muted">
         Education and career development for military members and veterans. Free to use.
       </p>
@@ -132,13 +132,6 @@ export default function LoginPanel({ onSignedIn })
       {error && (
         <p className="error" role="alert">
           {error}
-        </p>
-      )}
-
-      {IS_DEMO_BUILD && (
-        <p className="hint">
-          Demo accounts are seeded and their password is filled in for you. Sign-in itself is
-          real &mdash; every request after it carries a signed token.
         </p>
       )}
     </div>

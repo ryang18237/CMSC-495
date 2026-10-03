@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     app_name: str = "SkillBridge AI"
-    app_version: str = "0.1.0-alpha"
+    app_version: str = "1.0.0"
     environment: str = "development"
 
     # Data layer. PostgreSQL is the supported data layer and what CI runs
@@ -86,6 +86,9 @@ class Settings(BaseSettings):
     max_response_length: int = 4000
     max_comment_length: int = 1000
     max_request_bytes: int = 65536
+    # The record-import route alone accepts a document, so it gets its own,
+    # larger ceiling. Every other route keeps the small one above.
+    max_upload_bytes: int = 3_000_000
 
     # Rate limiting (per authenticated user)
     rate_limit_messages_per_minute: int = 30

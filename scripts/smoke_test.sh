@@ -23,6 +23,18 @@ CONVERSATION_ID=$(curl -sf -X POST "$BASE/api/v1/conversations" \
   -H "Authorization: Bearer $CUSTOMER_TOKEN" | json "['conversationId']")
 echo "conversation $CONVERSATION_ID"
 
+step "Member saves a job to My profile"
+# 201 the first time; 409 on a re-run against the same database. Both are fine.
+STATUS=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE/api/v1/profile/record/items" \
+  -H "Authorization: Bearer $CUSTOMER_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"kind":"EXPERIENCE","name":"Help Desk Technician","organization":"Fort Hood"}')
+[ "$STATUS" = "201" ] || [ "$STATUS" = "409" ] || { echo "expected 201 or 409, got $STATUS"; exit 1; }
+# Look across the whole profile: a re-run leaves earlier items in place, so
+# the position of this one is not fixed.
+curl -sf -H "Authorization: Bearer $CUSTOMER_TOKEN" "$BASE/api/v1/profile/record" \
+  | json "['added']" | grep -q "Help Desk Technician"
+echo "saved to the member's profile"
+
 step "Assistant answers a supported question"
 ANSWER=$(curl -sf -X POST "$BASE/api/v1/conversations/$CONVERSATION_ID/messages" \
   -H "Authorization: Bearer $CUSTOMER_TOKEN" -H 'Content-Type: application/json' \
@@ -62,6 +74,14 @@ STATUS=$(curl -s -o /dev/null -w '%{http_code}' \
   -H "Authorization: Bearer $CUSTOMER_TOKEN" "$BASE/api/v1/agent/cases/$CASE_ID")
 [ "$STATUS" = "403" ] || { echo "expected 403, got $STATUS"; exit 1; }
 echo "403 as expected"
+
+step "Counsellor replies and the member sees it in the same conversation"
+curl -sf -X POST "$BASE/api/v1/agent/cases/$CASE_ID/reply" \
+  -H "Authorization: Bearer $AGENT_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"message":"Happy to help. Let us look at your options together."}' | json "['sender']" | grep -qx AGENT
+curl -sf -H "Authorization: Bearer $CUSTOMER_TOKEN" "$BASE/api/v1/conversations/$CONVERSATION_ID" \
+  | json "['messages'][-1]['sender']" | grep -qx AGENT
+curl -sf -H "Authorization: Bearer $AGENT_TOKEN" "$BASE/api/v1/agent/workload" | json "['openCases']"
 
 step "Agent resolves the case"
 curl -sf -X PATCH "$BASE/api/v1/agent/cases/$CASE_ID" \

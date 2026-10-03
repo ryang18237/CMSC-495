@@ -33,12 +33,13 @@ from sqlalchemy.orm import Session
 from app.config import get_settings
 from app.errors import ConflictError, ForbiddenError, NotFoundError, UnprocessableError
 from app.models import Conversation, ConversationMessage, EscalationCase, User
-from app.schemas import CaseStatus
+from app.schemas import MAX_REPLY_LENGTH, CaseStatus
 
-# A counsellor's reply is a person typing, so the limit is generous compared
-# with the 2,000 character limit on a member's message -- but it is still a
-# limit, because an unbounded field is an unbounded database column.
-MAX_REPLY_LENGTH = 4000
+# MAX_REPLY_LENGTH is part of the interface contract, so it is defined in
+# app/schemas.py. A counsellor's reply is a person typing, so the limit is
+# generous compared with the 2,000 character limit on a member's message --
+# but it is still a limit, because an unbounded field is an unbounded column.
+__all__ = ["MAX_REPLY_LENGTH", "AgentHandoffService", "reply_length_limit"]
 
 # Statuses where the case is still someone's live responsibility.
 _OPEN_STATUSES = (CaseStatus.QUEUED.value, CaseStatus.ASSIGNED.value)

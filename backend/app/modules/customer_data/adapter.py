@@ -12,8 +12,10 @@ contract the rest of the platform depends on. Two things are going on here:
 """
 
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import cast
 
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
@@ -22,6 +24,7 @@ from sqlalchemy.orm import Session
 from app.errors import DependencyUnavailableError
 from app.models import LegacyMemberMaster
 from app.modules.cache.service import get_cache
+from app.modules.customer_data.member_record import MemberRecordService
 
 # Legacy code lookups. Kept here so the codes stop at the adapter boundary.
 _BRANCHES = {
@@ -58,18 +61,27 @@ _SPECIALTIES = {
 # Which parts of the record each kind of question is permitted to see. Anything
 # not listed here is withheld, so the default is always the narrower one.
 _INQUIRY_FIELDS: dict[str, tuple[str, ...]] = {
-    # "What can I study?" -- needs the training already finished, not the specialty.
-    "EDUCATION": ("service_branch", "years_of_service", "completed_training"),
+    # "What can I study?" -- needs finished training and study already done,
+    # not the job title and not the employment history.
+    "EDUCATION": (
+        "service_branch",
+        "years_of_service",
+        "completed_training",
+        "education",
+    ),
     # "Which certification should I sit?" -- needs the specialty and what is held.
     "CREDENTIAL": ("occupational_specialty", "completed_training", "credentials"),
-    # "How do I describe this on a resume?" -- needs the full picture of experience.
+    # "How do I describe this on a resume?" -- needs the full picture, which is
+    # the one question where the work history is the point.
     "CAREER": (
         "occupational_specialty",
         "years_of_service",
         "completed_training",
         "credentials",
+        "education",
+        "experience",
     ),
-    # "When should I start an internship?" -- needs timing, not the training list.
+    # "When should I start an internship?" -- needs timing, not the lists.
     "TRANSITION": ("service_branch", "years_of_service", "separation_date"),
     "GENERAL": ("service_branch",),
 }
@@ -92,33 +104,52 @@ class CustomerContext:
     separation_date: datetime | None = None
     completed_training: list[str] = field(default_factory=list)
     credentials: list[str] = field(default_factory=list)
+    # From the member's own profile. Nothing in the personnel record
+    # corresponds to these, which is exactly why members enter them.
+    education: list[str] = field(default_factory=list)
+    experience: list[str] = field(default_factory=list)
     available_fields: list[str] = field(default_factory=list)
 
     def to_prompt_facts(self) -> list[str]:
-        """Render only the fields this context was permitted to expose."""
+        """Render only the fields this context was permitted to expose.
+
+        Driven by the table below rather than a run of `if` statements, so
+        adding a field is one row and the permission check can never be
+        forgotten for one of them.
+        """
         facts: list[str] = []
-
-        if "service_branch" in self.available_fields:
-            facts.append(f"Branch of service: {self.service_branch}")
-
-        if "occupational_specialty" in self.available_fields and self.occupational_specialty:
-            facts.append(f"Occupational specialty: {self.occupational_specialty}")
-
-        if "years_of_service" in self.available_fields and self.years_of_service is not None:
-            facts.append(f"Years of service: {self.years_of_service}")
-
-        if "separation_date" in self.available_fields and self.separation_date is not None:
-            facts.append(f"Separation date: {self.separation_date.date().isoformat()}")
-
-        # These two are the point of the platform: recommendations have to be
-        # anchored to what the member has actually finished.
-        if "completed_training" in self.available_fields and self.completed_training:
-            facts.append("Completed training: " + ", ".join(self.completed_training))
-
-        if "credentials" in self.available_fields and self.credentials:
-            facts.append("Credentials already held: " + ", ".join(self.credentials))
-
+        for name, label, render in _FACT_RENDERERS:
+            if name not in self.available_fields:
+                continue
+            value = getattr(self, name)
+            # Empty is not withheld, it is simply nothing to say.
+            if value in (None, "", []):
+                continue
+            facts.append(f"{label}: {render(value)}")
         return facts
+
+
+def _as_list(value: object) -> str:
+    return ", ".join(str(item) for item in cast(list[str], value))
+
+
+def _as_date(value: object) -> str:
+    return cast(datetime, value).date().isoformat()
+
+
+# (attribute, label, how to render it). The order is the order the facts reach
+# the provider, so the two the platform exists for come last and closest to
+# the question.
+_FACT_RENDERERS: tuple[tuple[str, str, Callable[[object], str]], ...] = (
+    ("service_branch", "Branch of service", str),
+    ("occupational_specialty", "Occupational specialty", str),
+    ("years_of_service", "Years of service", str),
+    ("separation_date", "Separation date", _as_date),
+    ("education", "Education", _as_list),
+    ("experience", "Experience", _as_list),
+    ("completed_training", "Completed training", _as_list),
+    ("credentials", "Credentials already held", _as_list),
+)
 
 
 # Returned when no personnel record matches. The assistant still works; it just
@@ -209,6 +240,27 @@ def _split_list(raw: str) -> list[str]:
     return [item.strip() for item in raw.split(";") if item.strip()]
 
 
+def _merge(official: list[str], added: list[str]) -> list[str]:
+    """The service record first, then what the member added, without repeats."""
+    seen = {item.lower() for item in official}
+    merged = list(official)
+    for item in added:
+        if item.lower() not in seen:
+            seen.add(item.lower())
+            merged.append(item)
+    return merged
+
+
+@dataclass(frozen=True)
+class ServiceRecordView:
+    """What the personnel system says, shown back to the member read-only."""
+
+    service_branch: str
+    occupational_specialty: str | None
+    completed_training: list[str]
+    credentials: list[str]
+
+
 class CustomerDataAdapter:
     def __init__(self, db: Session) -> None:
         self._db = db
@@ -229,11 +281,24 @@ class CustomerDataAdapter:
     def invalidate(user_id: uuid.UUID) -> int:
         """Drop cached context for one member.
 
-        Nothing calls this yet because the Alpha never writes to the personnel
-        record. It exists so that when a write path is added, there is an
-        obvious place to keep the cache honest.
+        Called whenever the member edits "My record", so the very next message
+        sees the change.
         """
         return get_cache().invalidate(f"member:{user_id}:")
+
+    def service_record(self, user_id: uuid.UUID) -> ServiceRecordView | None:
+        """The legacy record alone, translated, for the member to see."""
+        row = self._load(user_id)
+        if row is None:
+            return None
+        return ServiceRecordView(
+            service_branch=_BRANCHES.get(row.svc_brnch_cd, row.svc_brnch_cd),
+            occupational_specialty=_SPECIALTIES.get(
+                (row.svc_brnch_cd, row.occ_spec_cd), row.occ_spec_cd
+            ),
+            completed_training=_split_list(row.cmpltd_trng_txt),
+            credentials=_split_list(row.cred_erned_txt),
+        )
 
     def get_customer_context(self, user_id: uuid.UUID) -> CustomerContext:
         """Full translation, used where the whole picture is wanted."""
@@ -251,10 +316,30 @@ class CustomerDataAdapter:
             return cached
 
         row = self._load(user_id)
-        if row is None:
-            return UNKNOWN_CONTEXT
-
+        # What the member added in "My record". It counts exactly like the
+        # service record, under the same per-inquiry permission list.
+        profile = MemberRecordService(self._db).by_kind(user_id)
+        added_training = profile["TRAINING"]
+        added_credentials = profile["CREDENTIAL"]
         allowed = _INQUIRY_FIELDS.get(inquiry_type.upper(), _INQUIRY_FIELDS["GENERAL"])
+
+        if row is None:
+            if not any(profile.values()):
+                return UNKNOWN_CONTEXT
+            # No personnel record, but the member has filled in a profile. Use
+            # it rather than answering as if we knew nothing about them.
+            context = CustomerContext(
+                customer_ref="SELF-REPORTED",
+                service_branch="UNKNOWN",
+                completed_training=added_training,
+                credentials=added_credentials,
+                education=profile["EDUCATION"],
+                experience=profile["EXPERIENCE"],
+                available_fields=[field for field in allowed if field != "service_branch"],
+            )
+            cache.set(cache_key, context)
+            return context
+
         branch = _BRANCHES.get(row.svc_brnch_cd, row.svc_brnch_cd)
 
         context = CustomerContext(
@@ -267,8 +352,10 @@ class CustomerDataAdapter:
             ),
             years_of_service=row.svc_yrs,
             separation_date=row.sep_dt,
-            completed_training=_split_list(row.cmpltd_trng_txt),
-            credentials=_split_list(row.cred_erned_txt),
+            completed_training=_merge(_split_list(row.cmpltd_trng_txt), added_training),
+            credentials=_merge(_split_list(row.cred_erned_txt), added_credentials),
+            education=profile["EDUCATION"],
+            experience=profile["EXPERIENCE"],
             available_fields=list(allowed),
         )
         cache.set(cache_key, context)

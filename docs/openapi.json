@@ -1,0 +1,1975 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "SkillBridge AI",
+    "description": "A free education and professional development service for military members and veterans. Modular monolith with an isolated AI Integration Module, deterministic escalation rules and asynchronous feedback analysis. Every error uses one envelope: `{\"error\": {\"code\", \"message\", \"requestId\"}}`. The written contract is docs/API.md.",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/v1/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Health",
+        "operationId": "health_api_v1_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Login",
+        "operationId": "login_api_v1_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoginResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/conversations": {
+      "post": {
+        "tags": [
+          "conversations"
+        ],
+        "summary": "Create Conversation",
+        "operationId": "create_conversation_api_v1_conversations_post",
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationCreatedResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/conversations/{conversation_id}/messages": {
+      "post": {
+        "tags": [
+          "conversations"
+        ],
+        "summary": "Post Message",
+        "operationId": "post_message_api_v1_conversations__conversation_id__messages_post",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MessageRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/conversations/{conversation_id}": {
+      "get": {
+        "tags": [
+          "conversations"
+        ],
+        "summary": "Get Conversation",
+        "operationId": "get_conversation_api_v1_conversations__conversation_id__get",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConversationDetailResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/conversations/{conversation_id}/escalate": {
+      "post": {
+        "tags": [
+          "conversations"
+        ],
+        "summary": "Escalate",
+        "operationId": "escalate_api_v1_conversations__conversation_id__escalate_post",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EscalationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EscalationResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/conversations/{conversation_id}/feedback": {
+      "post": {
+        "tags": [
+          "conversations"
+        ],
+        "summary": "Submit Feedback",
+        "operationId": "submit_feedback_api_v1_conversations__conversation_id__feedback_post",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeedbackRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeedbackResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agent/cases": {
+      "get": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "List Cases",
+        "operationId": "list_cases_api_v1_agent_cases_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AgentCaseSummary"
+                  },
+                  "type": "array",
+                  "title": "Response List Cases Api V1 Agent Cases Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agent/cases/{case_id}": {
+      "get": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "Get Case",
+        "operationId": "get_case_api_v1_agent_cases__case_id__get",
+        "parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Case Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentCaseResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "Update Case",
+        "operationId": "update_case_api_v1_agent_cases__case_id__patch",
+        "parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Case Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CaseStatusUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentCaseSummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agent/recommendations": {
+      "get": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "List Recommendations",
+        "description": "Improvement candidates produced by the Learning Analytics Worker.",
+        "operationId": "list_recommendations_api_v1_agent_recommendations_get",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ReviewStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RecommendationView"
+                  },
+                  "title": "Response List Recommendations Api V1 Agent Recommendations Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agent/recommendations/{recommendation_id}": {
+      "patch": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "Review Recommendation",
+        "description": "Record a human decision on a recommendation.\n\nA decision is final: re-reviewing an already decided item is a conflict\nrather than a silent overwrite, so the audit trail stays meaningful.",
+        "operationId": "review_recommendation_api_v1_agent_recommendations__recommendation_id__patch",
+        "parameters": [
+          {
+            "name": "recommendation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Recommendation Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecommendationDecisionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecommendationView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agent/analytics/run": {
+      "post": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "Run Analytics",
+        "description": "Run the Learning Analytics Worker once, on demand.\n\nALPHA SCOPE -- barebones. In the target system the worker is triggered by\nthe message queue on a schedule. Exposing it here lets the asynchronous\npath be demonstrated without waiting for a scheduler, and it runs the same\ncode the command-line entry point does.",
+        "operationId": "run_analytics_api_v1_agent_analytics_run_post",
+        "parameters": [
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 7,
+              "title": "Days"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalyticsRunResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agent/cases/{case_id}/reply": {
+      "post": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "Reply To Member",
+        "description": "Post a counsellor's reply into the member's conversation.\n\nReplying also claims the case, because answering a member is taking\nresponsibility for them. The member sees the reply in the same thread on\ntheir next poll -- no separate endpoint and no second inbox.",
+        "operationId": "reply_to_member_api_v1_agent_cases__case_id__reply_post",
+        "parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Case Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentReplyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agent/cases/{case_id}/claim": {
+      "post": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "Claim Case",
+        "description": "Take ownership of a queued case without replying yet.\n\nUseful when a counsellor wants to read a long conversation before writing\nanything, and wants colleagues to see it is being handled.",
+        "operationId": "claim_case_api_v1_agent_cases__case_id__claim_post",
+        "parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Case Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentCaseSummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agent/cases/{case_id}/replies": {
+      "get": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "List Replies",
+        "description": "Counsellor replies on this case, oldest first.",
+        "operationId": "list_replies_api_v1_agent_cases__case_id__replies_get",
+        "parameters": [
+          {
+            "name": "case_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Case Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MessageView"
+                  },
+                  "title": "Response List Replies Api V1 Agent Cases  Case Id  Replies Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/agent/workload": {
+      "get": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "My Workload",
+        "description": "How many open cases the signed-in counsellor holds.",
+        "operationId": "my_workload_api_v1_agent_workload_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentWorkloadResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ops/metrics": {
+      "get": {
+        "tags": [
+          "ops"
+        ],
+        "summary": "Metrics",
+        "description": "Request, conversation and latency counters for this instance.\n\nFigures are per-instance by design. Behind a load balancer each instance\nreports its own, which `instanceId` makes explicit rather than implying a\ncluster-wide total.",
+        "operationId": "metrics_api_v1_ops_metrics_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Metrics Api V1 Ops Metrics Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/profile/record": {
+      "get": {
+        "tags": [
+          "profile"
+        ],
+        "summary": "Get Record",
+        "description": "The service record (read-only) and everything the member has added.",
+        "operationId": "get_record_api_v1_profile_record_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberRecordResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/profile/record/items": {
+      "post": {
+        "tags": [
+          "profile"
+        ],
+        "summary": "Add Item",
+        "operationId": "add_item_api_v1_profile_record_items_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordItemRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberRecordItemView"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/profile/record/items/bulk": {
+      "post": {
+        "tags": [
+          "profile"
+        ],
+        "summary": "Add Items",
+        "description": "Save the items the member confirmed after an upload. Repeats are counted, not errors.",
+        "operationId": "add_items_api_v1_profile_record_items_bulk_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordItemsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordItemsAddedResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/profile/record/items/{item_id}": {
+      "delete": {
+        "tags": [
+          "profile"
+        ],
+        "summary": "Remove Item",
+        "operationId": "remove_item_api_v1_profile_record_items__item_id__delete",
+        "parameters": [
+          {
+            "name": "item_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Item Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/profile/record/import": {
+      "post": {
+        "tags": [
+          "profile"
+        ],
+        "summary": "Import Record",
+        "description": "Read an uploaded .txt, .csv or .pdf and suggest items. Saves nothing.",
+        "operationId": "import_record_api_v1_profile_record_import_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordImportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordImportResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AgentCaseResponse": {
+        "properties": {
+          "caseId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Caseid"
+          },
+          "conversationId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Conversationid"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/EscalationReason"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CaseStatus"
+          },
+          "queue": {
+            "type": "string",
+            "title": "Queue"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Createdat"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/MessageView"
+            },
+            "type": "array",
+            "title": "Messages"
+          }
+        },
+        "type": "object",
+        "required": [
+          "caseId",
+          "conversationId",
+          "reason",
+          "status",
+          "queue",
+          "summary",
+          "createdAt",
+          "messages"
+        ],
+        "title": "AgentCaseResponse"
+      },
+      "AgentCaseSummary": {
+        "properties": {
+          "caseId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Caseid"
+          },
+          "conversationId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Conversationid"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/EscalationReason"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CaseStatus"
+          },
+          "queue": {
+            "type": "string",
+            "title": "Queue"
+          },
+          "summary": {
+            "type": "string",
+            "title": "Summary"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Createdat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "caseId",
+          "conversationId",
+          "reason",
+          "status",
+          "queue",
+          "summary",
+          "createdAt"
+        ],
+        "title": "AgentCaseSummary"
+      },
+      "AgentReplyRequest": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "AgentReplyRequest",
+        "description": "A counsellor's reply to a member.\n\nLength is validated in the Escalation Module, the same way a member's\nmessage is, so that every bad reply -- empty, whitespace only or too long --\nreturns the one documented code, 422 INVALID_REPLY. Bounding it here as\nwell would split that into INVALID_REQUEST for some cases and INVALID_REPLY\nfor others. An enormous body is still stopped at the edge by the 413\nrequest-size check in main.py."
+      },
+      "AgentWorkloadResponse": {
+        "properties": {
+          "openCases": {
+            "type": "integer",
+            "title": "Opencases"
+          }
+        },
+        "type": "object",
+        "required": [
+          "openCases"
+        ],
+        "title": "AgentWorkloadResponse",
+        "description": "Open cases held by the signed-in counsellor."
+      },
+      "AnalyticsRunResponse": {
+        "properties": {
+          "recommendationsCreated": {
+            "type": "integer",
+            "title": "Recommendationscreated"
+          },
+          "ranAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Ranat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "recommendationsCreated",
+          "ranAt"
+        ],
+        "title": "AnalyticsRunResponse",
+        "description": "Result of running the Learning Analytics Worker on demand."
+      },
+      "CaseStatus": {
+        "type": "string",
+        "enum": [
+          "QUEUED",
+          "ASSIGNED",
+          "RESOLVED",
+          "CLOSED"
+        ],
+        "title": "CaseStatus"
+      },
+      "CaseStatusUpdateRequest": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/CaseStatus"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "title": "CaseStatusUpdateRequest"
+      },
+      "ChatResponse": {
+        "properties": {
+          "conversationId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Conversationid"
+          },
+          "messageId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Messageid"
+          },
+          "response": {
+            "type": "string",
+            "maxLength": 4000,
+            "title": "Response"
+          },
+          "status": {
+            "$ref": "#/components/schemas/MessageStatus"
+          },
+          "escalationReason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EscalationReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp"
+          }
+        },
+        "type": "object",
+        "required": [
+          "conversationId",
+          "messageId",
+          "response",
+          "status",
+          "timestamp"
+        ],
+        "title": "ChatResponse"
+      },
+      "ConversationCreatedResponse": {
+        "properties": {
+          "conversationId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Conversationid"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ConversationStatus"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Createdat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "conversationId",
+          "status",
+          "createdAt"
+        ],
+        "title": "ConversationCreatedResponse"
+      },
+      "ConversationDetailResponse": {
+        "properties": {
+          "conversationId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Conversationid"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ConversationStatus"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Createdat"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/MessageView"
+            },
+            "type": "array",
+            "title": "Messages"
+          }
+        },
+        "type": "object",
+        "required": [
+          "conversationId",
+          "status",
+          "createdAt",
+          "messages"
+        ],
+        "title": "ConversationDetailResponse"
+      },
+      "ConversationStatus": {
+        "type": "string",
+        "enum": [
+          "ACTIVE",
+          "ESCALATED",
+          "CLOSED"
+        ],
+        "title": "ConversationStatus"
+      },
+      "EscalationReason": {
+        "type": "string",
+        "enum": [
+          "CUSTOMER_REQUEST",
+          "UNSUPPORTED_TOPIC",
+          "SECURITY_CONCERN",
+          "VALIDATION_FAILURE",
+          "AI_SERVICE_FAILURE"
+        ],
+        "title": "EscalationReason"
+      },
+      "EscalationRequest": {
+        "properties": {
+          "reason": {
+            "$ref": "#/components/schemas/EscalationReason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "title": "EscalationRequest"
+      },
+      "EscalationResponse": {
+        "properties": {
+          "caseId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Caseid"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CaseStatus"
+          },
+          "queue": {
+            "type": "string",
+            "title": "Queue"
+          }
+        },
+        "type": "object",
+        "required": [
+          "caseId",
+          "status",
+          "queue"
+        ],
+        "title": "EscalationResponse"
+      },
+      "FeedbackRating": {
+        "type": "string",
+        "enum": [
+          "HELPFUL",
+          "UNHELPFUL"
+        ],
+        "title": "FeedbackRating"
+      },
+      "FeedbackRequest": {
+        "properties": {
+          "messageId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Messageid"
+          },
+          "rating": {
+            "$ref": "#/components/schemas/FeedbackRating"
+          },
+          "comment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comment"
+          }
+        },
+        "type": "object",
+        "required": [
+          "messageId",
+          "rating"
+        ],
+        "title": "FeedbackRequest"
+      },
+      "FeedbackResponse": {
+        "properties": {
+          "feedbackId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Feedbackid"
+          },
+          "conversationId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Conversationid"
+          },
+          "messageId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Messageid"
+          },
+          "rating": {
+            "$ref": "#/components/schemas/FeedbackRating"
+          },
+          "recordedAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Recordedat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "feedbackId",
+          "conversationId",
+          "messageId",
+          "rating",
+          "recordedAt"
+        ],
+        "title": "FeedbackResponse"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HealthResponse": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "title": "Status"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "instanceId": {
+            "type": "string",
+            "title": "Instanceid"
+          },
+          "dependencies": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Dependencies"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "timestamp",
+          "version",
+          "instanceId",
+          "dependencies"
+        ],
+        "title": "HealthResponse"
+      },
+      "LoginRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 3,
+            "title": "Email"
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Password"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "LoginRequest"
+      },
+      "LoginResponse": {
+        "properties": {
+          "accessToken": {
+            "type": "string",
+            "title": "Accesstoken"
+          },
+          "tokenType": {
+            "type": "string",
+            "title": "Tokentype",
+            "default": "Bearer"
+          },
+          "expiresIn": {
+            "type": "integer",
+            "title": "Expiresin"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role"
+          },
+          "displayName": {
+            "type": "string",
+            "title": "Displayname"
+          }
+        },
+        "type": "object",
+        "required": [
+          "accessToken",
+          "expiresIn",
+          "role",
+          "displayName"
+        ],
+        "title": "LoginResponse"
+      },
+      "MemberRecordItemView": {
+        "properties": {
+          "itemId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Itemid"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/RecordItemKind"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "organization": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organization"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "source": {
+            "$ref": "#/components/schemas/RecordItemSource"
+          },
+          "addedAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Addedat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "itemId",
+          "kind",
+          "name",
+          "source",
+          "addedAt"
+        ],
+        "title": "MemberRecordItemView"
+      },
+      "MemberRecordResponse": {
+        "properties": {
+          "serviceRecord": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ServiceRecordSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "added": {
+            "items": {
+              "$ref": "#/components/schemas/MemberRecordItemView"
+            },
+            "type": "array",
+            "title": "Added"
+          },
+          "completeness": {
+            "$ref": "#/components/schemas/ProfileCompleteness"
+          }
+        },
+        "type": "object",
+        "required": [
+          "serviceRecord",
+          "added",
+          "completeness"
+        ],
+        "title": "MemberRecordResponse"
+      },
+      "MessageRequest": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "MessageRequest"
+      },
+      "MessageStatus": {
+        "type": "string",
+        "enum": [
+          "ANSWERED",
+          "ESCALATED",
+          "ERROR"
+        ],
+        "title": "MessageStatus"
+      },
+      "MessageView": {
+        "properties": {
+          "messageId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Messageid"
+          },
+          "sender": {
+            "type": "string",
+            "title": "Sender"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MessageStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "escalationReason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EscalationReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "sources": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Sources"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Timestamp"
+          }
+        },
+        "type": "object",
+        "required": [
+          "messageId",
+          "sender",
+          "content",
+          "timestamp"
+        ],
+        "title": "MessageView"
+      },
+      "ProfileCompleteness": {
+        "properties": {
+          "percent": {
+            "type": "integer",
+            "title": "Percent"
+          },
+          "missingKinds": {
+            "items": {
+              "$ref": "#/components/schemas/RecordItemKind"
+            },
+            "type": "array",
+            "title": "Missingkinds"
+          }
+        },
+        "type": "object",
+        "required": [
+          "percent",
+          "missingKinds"
+        ],
+        "title": "ProfileCompleteness"
+      },
+      "RecommendationDecisionRequest": {
+        "properties": {
+          "reviewStatus": {
+            "$ref": "#/components/schemas/ReviewStatus"
+          }
+        },
+        "type": "object",
+        "required": [
+          "reviewStatus"
+        ],
+        "title": "RecommendationDecisionRequest"
+      },
+      "RecommendationView": {
+        "properties": {
+          "recommendationId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Recommendationid"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          },
+          "occurrences": {
+            "type": "integer",
+            "title": "Occurrences"
+          },
+          "reviewStatus": {
+            "$ref": "#/components/schemas/ReviewStatus"
+          },
+          "periodStart": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Periodstart"
+          },
+          "periodEnd": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Periodend"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Createdat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "recommendationId",
+          "category",
+          "detail",
+          "occurrences",
+          "reviewStatus",
+          "periodStart",
+          "periodEnd",
+          "createdAt"
+        ],
+        "title": "RecommendationView"
+      },
+      "RecordCandidate": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/RecordItemKind"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "organization": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organization"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "name"
+        ],
+        "title": "RecordCandidate"
+      },
+      "RecordImportRequest": {
+        "properties": {
+          "filename": {
+            "type": "string",
+            "title": "Filename"
+          },
+          "contentBase64": {
+            "type": "string",
+            "title": "Contentbase64"
+          }
+        },
+        "type": "object",
+        "required": [
+          "filename",
+          "contentBase64"
+        ],
+        "title": "RecordImportRequest"
+      },
+      "RecordImportResponse": {
+        "properties": {
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/RecordCandidate"
+            },
+            "type": "array",
+            "title": "Candidates"
+          },
+          "skippedLines": {
+            "type": "integer",
+            "title": "Skippedlines"
+          }
+        },
+        "type": "object",
+        "required": [
+          "candidates",
+          "skippedLines"
+        ],
+        "title": "RecordImportResponse"
+      },
+      "RecordItemKind": {
+        "type": "string",
+        "enum": [
+          "CREDENTIAL",
+          "TRAINING",
+          "EDUCATION",
+          "EXPERIENCE",
+          "GOAL"
+        ],
+        "title": "RecordItemKind"
+      },
+      "RecordItemRequest": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "title": "Kind"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "organization": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Organization"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "name"
+        ],
+        "title": "RecordItemRequest"
+      },
+      "RecordItemSource": {
+        "type": "string",
+        "enum": [
+          "MANUAL",
+          "UPLOAD"
+        ],
+        "title": "RecordItemSource"
+      },
+      "RecordItemsAddedResponse": {
+        "properties": {
+          "added": {
+            "items": {
+              "$ref": "#/components/schemas/MemberRecordItemView"
+            },
+            "type": "array",
+            "title": "Added"
+          },
+          "alreadyOnRecord": {
+            "type": "integer",
+            "title": "Alreadyonrecord"
+          }
+        },
+        "type": "object",
+        "required": [
+          "added",
+          "alreadyOnRecord"
+        ],
+        "title": "RecordItemsAddedResponse"
+      },
+      "RecordItemsRequest": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RecordItemRequest"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "type": "object",
+        "required": [
+          "items"
+        ],
+        "title": "RecordItemsRequest"
+      },
+      "ReviewStatus": {
+        "type": "string",
+        "enum": [
+          "PENDING_REVIEW",
+          "APPROVED",
+          "REJECTED"
+        ],
+        "title": "ReviewStatus",
+        "description": "Lifecycle of a Learning Analytics recommendation.\n\nNothing reaches the production AI without an explicit APPROVED decision --\nthe \"approved changes only\" constraint in the architecture diagram."
+      },
+      "ServiceRecordSummary": {
+        "properties": {
+          "serviceBranch": {
+            "type": "string",
+            "title": "Servicebranch"
+          },
+          "occupationalSpecialty": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Occupationalspecialty"
+          },
+          "completedTraining": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Completedtraining"
+          },
+          "credentials": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Credentials"
+          }
+        },
+        "type": "object",
+        "required": [
+          "serviceBranch",
+          "occupationalSpecialty",
+          "completedTraining",
+          "credentials"
+        ],
+        "title": "ServiceRecordSummary"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "health",
+      "description": "Liveness and dependency status. No sign-in required."
+    },
+    {
+      "name": "auth",
+      "description": "Sign in and receive a bearer token."
+    },
+    {
+      "name": "conversations",
+      "description": "A member's conversation with the assistant: send, read, escalate, rate."
+    },
+    {
+      "name": "agent",
+      "description": "Counsellor dashboard: the escalation queue, replies and review. Every route requires the AGENT role."
+    },
+    {
+      "name": "profile",
+      "description": "My record: the member's service record and the training and credentials they added, used in every conversation. CUSTOMER role only."
+    },
+    {
+      "name": "ops",
+      "description": "Operational metrics for this instance. AGENT role only."
+    }
+  ]
+}

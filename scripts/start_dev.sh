@@ -59,6 +59,6 @@ pids+=($!)
 
 echo
 echo "Both processes are running. Open http://localhost:5173"
-echo "Sign in as customer@example.com / DemoPassw0rd! (or agent@example.com)"
+echo "Click Continue as a member (or sign in as member@example.com / DemoPassw0rd!)"
 echo "Press Ctrl+C to stop both."
 wait

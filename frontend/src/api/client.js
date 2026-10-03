@@ -118,4 +118,27 @@ export const api = {
   runAnalytics: (token) => request('/api/v1/agent/analytics/run', { method: 'POST', token }),
 
   metrics: (token) => request('/api/v1/ops/metrics', { token }),
+
+  // My record (member role only).
+  getRecord: (token) => request('/api/v1/profile/record', { token }),
+
+  addRecordItem: (token, kind, name, organization, detail) =>
+    request('/api/v1/profile/record/items', {
+      method: 'POST',
+      token,
+      body: { kind, name, organization: organization || undefined, detail: detail || undefined },
+    }),
+
+  addRecordItems: (token, items) =>
+    request('/api/v1/profile/record/items/bulk', { method: 'POST', token, body: { items } }),
+
+  removeRecordItem: (token, itemId) =>
+    request(`/api/v1/profile/record/items/${itemId}`, { method: 'DELETE', token }),
+
+  importRecord: (token, filename, contentBase64) =>
+    request('/api/v1/profile/record/import', {
+      method: 'POST',
+      token,
+      body: { filename, contentBase64 },
+    }),
 }

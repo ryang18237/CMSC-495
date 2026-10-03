@@ -1,6 +1,21 @@
 # API Reference — v1
 
-SkillBridge AI, Alpha release.
+SkillBridge AI, version 1.0.0.
+
+This document is the written contract. Two generated companions describe the
+same API and are kept in step with it:
+
+- **Interactive docs** — with the API running, open
+  <http://127.0.0.1:8000/docs> to read every route and call it from the
+  browser. Sign in with `POST /api/v1/auth/login`, copy the `accessToken`, and
+  paste it into **Authorize**.
+- **`docs/openapi.json`** — the OpenAPI 3.1 description, committed so contract
+  changes show up in pull request diffs. Regenerate it with
+  `python scripts/export_openapi.py`; CI fails if it is stale.
+
+A test (`backend/tests/test_api_contract.py`) fails if a route exists that the
+table below does not list, if the table lists a route that does not exist, or
+if the code raises an error code this document never mentions.
 
 Base URL (local): `http://127.0.0.1:8000`
 
@@ -39,6 +54,7 @@ Send the token on every other call: `Authorization: Bearer <accessToken>`.
 
 | Method | Endpoint | Purpose | Success |
 | --- | --- | --- | --- |
+| POST | `/api/v1/auth/login` | Sign in and receive a bearer token | 200 |
 | POST | `/api/v1/conversations` | Create a conversation | 201 |
 | POST | `/api/v1/conversations/{conversationId}/messages` | Submit a customer message | 200 |
 | GET | `/api/v1/conversations/{conversationId}` | Retrieve authorized history | 200 |
@@ -50,12 +66,22 @@ Send the token on every other call: `Authorization: Bearer <accessToken>`.
 | GET | `/api/v1/agent/recommendations` | List AI improvement candidates (agent only) | 200 |
 | PATCH | `/api/v1/agent/recommendations/{recommendationId}` | Approve or reject a candidate (agent only) | 200 |
 | POST | `/api/v1/agent/analytics/run` | Run the Learning Analytics Worker on demand (agent only) | 200 |
+| POST | `/api/v1/agent/cases/{caseId}/reply` | Reply to the member in their conversation (agent only) | 201 |
+| POST | `/api/v1/agent/cases/{caseId}/claim` | Take a case without replying yet (agent only) | 200 |
+| GET | `/api/v1/agent/cases/{caseId}/replies` | Counsellor replies on a case (agent only) | 200 |
+| GET | `/api/v1/agent/workload` | Open cases held by the signed-in counsellor (agent only) | 200 |
+| GET | `/api/v1/profile/record` | The member's service record, their profile and how complete it is (member only) | 200 |
+| POST | `/api/v1/profile/record/items` | Add one profile item (member only) | 201 |
+| POST | `/api/v1/profile/record/items/bulk` | Add confirmed items after an upload (member only) | 201 |
+| DELETE | `/api/v1/profile/record/items/{itemId}` | Remove an item the member added (member only) | 204 |
+| POST | `/api/v1/profile/record/import` | Read an uploaded .txt, .csv or .pdf and suggest items; saves nothing (member only) | 200 |
 | GET | `/api/v1/ops/metrics` | Operational counters (agent only) | 200 |
 | GET | `/api/v1/health` | Application health | 200 |
 
-`GET /api/v1/agent/cases` and `PATCH /api/v1/agent/cases/{caseId}` are Alpha
-additions supporting the agent dashboard; the seven endpoints from the System
-Design Specification are unchanged.
+The seven endpoints from the System Design Specification are unchanged in shape
+since the Alpha. Everything else in the table was added to support the
+counsellor dashboard, human replies and operations, and none of it altered an
+existing request or response.
 
 ---
 
@@ -232,6 +258,202 @@ conversation. Updating an already-closed case returns **409**.
 
 ---
 
+## My profile
+
+Member only (`CUSTOMER` role); a counsellor receives **403**. Everything acts
+on the signed-in member.
+
+The legacy personnel record is read-only and holds military training only — a
+certification earned after separation, a degree, a civilian job never reach
+it. A member enters those once here. The Customer Data Adapter merges them
+with the service record, so **every later conversation** uses them under the
+same per-question permission rules; nobody restates anything per conversation.
+Editing the profile takes effect on the next message.
+
+| `kind` | Covers |
+| --- | --- |
+| `CREDENTIAL` | A certification or license |
+| `TRAINING` | A course, school or military qualification |
+| `EDUCATION` | A degree, diploma or coursework |
+| `EXPERIENCE` | A job or role, military or civilian |
+| `GOAL` | Something the member intends to do -- their development plan |
+
+Each item is a `name`, plus an optional `organization` (issuer, school or
+employer) and an optional `detail`. Only `name` is required.
+
+`GOAL` is deliberately a kind of its own rather than a flag on the others. A
+plan item must never be read as something the member holds, or the assistant
+would start recommending the step after a degree nobody has earned. It is
+excluded from the facts sent to an AI provider, and from `completeness`:
+having no plan is not a gap in the record of what you have done.
+
+### GET /api/v1/profile/record → 200
+
+```json
+{
+  "serviceRecord": {
+    "serviceBranch": "Army",
+    "occupationalSpecialty": "Information Technology Specialist",
+    "completedTraining": ["Basic Leader Course", "Network Administration Course"],
+    "credentials": ["CompTIA A+"]
+  },
+  "added": [
+    {
+      "itemId": "3f0c9a52-8c1e-4b7a-9d2e-1a6f5b0c7d11",
+      "kind": "EDUCATION",
+      "name": "Bachelor of Science in Information Technology",
+      "organization": "Western Governors University",
+      "detail": "Expected 2027",
+      "source": "MANUAL",
+      "addedAt": "2026-09-29T02:10:00Z"
+    }
+  ],
+  "completeness": { "percent": 40, "missingKinds": ["TRAINING", "EXPERIENCE"] }
+}
+```
+
+`serviceRecord` is `null` when the member has no personnel record; the items
+they enter are still used.
+
+`completeness.percent` is a blunt score out of five equal parts — the service
+record, and one per kind — meant to show a member what is still worth adding,
+not to grade them. `missingKinds` lists the kinds with nothing in them yet.
+
+### POST /api/v1/profile/record/items → 201
+
+```json
+{ "kind": "EXPERIENCE", "name": "Help Desk Technician", "organization": "Fort Hood" }
+```
+
+Whitespace is tidied; a blank optional field is stored as null. Returns the item.
+
+| HTTP | Code | When |
+| --- | --- | --- |
+| 409 | `RECORD_ITEM_EXISTS` | The same kind and name is already there (case-insensitive) |
+| 422 | `INVALID_RECORD_ITEM` | Unknown kind; a name blank or over 200 characters; an organisation over 200; a detail over 500 |
+| 422 | `RECORD_ITEM_LIMIT` | The profile already holds 150 items |
+
+### POST /api/v1/profile/record/import → 200
+
+Reads a document and **suggests** items. Nothing is saved and the document is
+not stored. This route accepts up to 3 MB; every other route keeps the 64 KB
+limit.
+
+```json
+{ "filename": "transcript.pdf", "contentBase64": "JVBERi0xLjcK..." }
+```
+
+```json
+{
+  "candidates": [
+    { "kind": "EDUCATION", "name": "Associate of Applied Science", "organization": "Central Texas College", "detail": null },
+    { "kind": "CREDENTIAL", "name": "Cisco CCNA", "organization": null, "detail": null }
+  ],
+  "skippedLines": 4
+}
+```
+
+A whole resume or transcript can go in at once. Lines are kept only when they
+read like one of the four kinds, or sit under a heading such as
+*Certifications*, *Education* or *Work Experience*. `Title — Organisation`,
+`Title at Employer` and `Title, School` are split into the two fields. Dates,
+numbering, course codes, contact details and page furniture are removed. The
+member reviews the list before anything is saved.
+
+| HTTP | Code | When |
+| --- | --- | --- |
+| 413 | `PAYLOAD_TOO_LARGE` | Over 3 MB |
+| 422 | `UNSUPPORTED_RECORD_FILE` | Not `.txt`, `.csv` or `.pdf` |
+| 422 | `INVALID_RECORD_FILE` | Not valid base64, or an unreadable PDF |
+
+### POST /api/v1/profile/record/items/bulk → 201
+
+Saves the items the member confirmed. Items already on the record are counted,
+not treated as errors.
+
+```json
+{ "items": [ { "kind": "CREDENTIAL", "name": "Cisco CCNA", "organization": null } ] }
+```
+
+```json
+{ "added": [ { "itemId": "…", "kind": "CREDENTIAL", "name": "Cisco CCNA", "organization": null, "detail": null, "source": "UPLOAD", "addedAt": "…" } ], "alreadyOnRecord": 0 }
+```
+
+### DELETE /api/v1/profile/record/items/{itemId} → 204
+
+Removes an item the member entered. Service-record items cannot be removed.
+Another member's item id returns **404** `RECORD_ITEM_NOT_FOUND`, so ids
+cannot be probed.
+
+---
+
+## Counsellor replies
+
+Owned by the Escalation Module. All four require the `AGENT` role.
+
+A reply is written into the member's own conversation, so the member reads it
+through `GET /api/v1/conversations/{conversationId}` like any other message —
+there is no second inbox. The client polls that endpoint every five seconds
+while a conversation is `ESCALATED`, and stops when it is not.
+
+### POST /api/v1/agent/cases/{caseId}/reply → 201
+
+```json
+{ "message": "Happy to help. Based on your network coursework, let's look at two options." }
+```
+
+Returns the stored message, the same `MessageView` shape a conversation
+returns. A counsellor reply has `sender: "AGENT"` and **no `status`** —
+`ANSWERED` and `ESCALATED` describe what the assistant did with a turn, and
+reusing them would inflate the operations counters.
+
+```json
+{
+  "messageId": "0c4b8f7e-3a2d-4d6e-9f1a-5b7c2e8d9a10",
+  "sender": "AGENT",
+  "content": "Happy to help. Based on your network coursework, let's look at two options.",
+  "status": null,
+  "escalationReason": null,
+  "sources": [],
+  "timestamp": "2026-09-28T14:05:11Z"
+}
+```
+
+Replying also claims the case if nobody holds it yet.
+
+| HTTP | Code | When |
+| --- | --- | --- |
+| 403 | `FORBIDDEN` | The case is assigned to another counsellor |
+| 404 | `CASE_NOT_FOUND` | No case with that id |
+| 409 | `CASE_NOT_OPEN` | The case is resolved or closed |
+| 422 | `INVALID_REPLY` | Empty, whitespace only, or longer than 4,000 characters |
+
+### POST /api/v1/agent/cases/{caseId}/claim → 200
+
+No body. Returns the case summary with `status: "ASSIGNED"`. Claiming a case
+you already hold is a no-op, so a double click is harmless.
+
+| HTTP | Code | When |
+| --- | --- | --- |
+| 404 | `CASE_NOT_FOUND` | No case with that id |
+| 409 | `CASE_ALREADY_ASSIGNED` | Another counsellor holds it |
+| 409 | `CASE_NOT_OPEN` | The case is resolved or closed |
+
+### GET /api/v1/agent/cases/{caseId}/replies → 200
+
+An array of `MessageView`, counsellor replies only, oldest first.
+
+### GET /api/v1/agent/workload → 200
+
+```json
+{ "openCases": 2 }
+```
+
+Queued or assigned cases held by the signed-in counsellor. It is a count, not a
+cap.
+
+---
+
 ## Reviewed AI configuration
 
 The Learning Analytics Worker aggregates feedback and escalation patterns into
@@ -268,13 +490,13 @@ and a candidate can only be decided once (**409**
 missing candidate returns **404** `RECOMMENDATION_NOT_FOUND`.
 
 `POST /api/v1/agent/analytics/run?days=7` runs the worker once and returns
-`{"recommendationsCreated": 1, "ranAt": "..."}`. **Alpha scope:** in the target
+`{"recommendationsCreated": 1, "ranAt": "..."}`. **Scope:** in the target
 system a scheduler drives the worker off the message queue; this endpoint runs
 the same code so the asynchronous path can be demonstrated on demand.
 
 **Approving a candidate does not apply it.** Nothing in the platform reads an
 `APPROVED` recommendation and changes a prompt or a routing rule; that step is
-deliberately out of scope for the Alpha.
+deliberately out of scope for this release.
 
 ---
 
@@ -300,7 +522,7 @@ balancer each instance reports its own, which `instanceId` makes explicit.
 }
 ```
 
-**Alpha scope:** counters live in process memory and are read back through this
+**Scope:** counters live in process memory and are read back through this
 endpoint. A production deployment exports them to a monitoring system.
 
 ---
@@ -311,7 +533,7 @@ endpoint. A production deployment exports them to a monitoring system.
 {
   "status": "healthy",
   "timestamp": "2026-08-27T20:30:00Z",
-  "version": "0.1.0-alpha",
+  "version": "1.0.0",
   "instanceId": "vm-e175bb61",
   "dependencies": {
     "database": "ok",
@@ -353,14 +575,16 @@ Every failure uses the same shape:
 
 | HTTP | Condition | Example codes |
 | --- | --- | --- |
-| 400 | Malformed request or invalid syntax | `INVALID_IDENTIFIER` |
+| 400 | Malformed request or invalid syntax | `INVALID_IDENTIFIER`, `BAD_REQUEST` |
 | 401 | Authentication missing, expired or invalid | `UNAUTHORIZED` |
 | 403 | Authenticated user lacks permission | `FORBIDDEN` |
-| 404 | Resource not found | `CONVERSATION_NOT_FOUND`, `CASE_NOT_FOUND`, `MESSAGE_NOT_FOUND` |
-| 409 | Conflicting conversation or escalation state | `ESCALATION_ALREADY_ACTIVE`, `CONVERSATION_CLOSED` |
+| 404 | Resource not found | `NOT_FOUND` (unknown route), `RECORD_ITEM_NOT_FOUND`, `CONVERSATION_NOT_FOUND`, `CASE_NOT_FOUND`, `MESSAGE_NOT_FOUND`, `RECOMMENDATION_NOT_FOUND`, `ARTICLE_NOT_FOUND` |
+| 405 | Method not allowed on this route | `METHOD_NOT_ALLOWED` |
+| 409 | Conflicting conversation, case or review state | `CONFLICT`, `ESCALATION_ALREADY_ACTIVE`, `CONVERSATION_CLOSED`, `CASE_ALREADY_CLOSED`, `CASE_NOT_OPEN`, `CASE_ALREADY_ASSIGNED`, `RECORD_ITEM_EXISTS`, `FEEDBACK_ALREADY_RECORDED`, `RECOMMENDATION_ALREADY_REVIEWED` |
 | 413 | Payload exceeds the permitted size | `PAYLOAD_TOO_LARGE` |
-| 422 | Valid syntax, failed business validation | `INVALID_MESSAGE`, `INVALID_COMMENT` |
+| 422 | Valid syntax, failed validation | `INVALID_REQUEST` (schema), `UNPROCESSABLE_REQUEST`, `INVALID_MESSAGE`, `INVALID_REPLY`, `INVALID_COMMENT`, `INVALID_REVIEW_DECISION`, `INVALID_RECORD_ITEM`, `RECORD_ITEM_LIMIT`, `UNSUPPORTED_RECORD_FILE`, `INVALID_RECORD_FILE` |
 | 429 | Rate limit exceeded | `RATE_LIMIT_EXCEEDED` |
+| 500 | Unexpected server fault; details are logged, never returned | `INTERNAL_ERROR` |
 | 502 | Upstream returned an invalid response | `UPSTREAM_INVALID_RESPONSE` |
 | 503 | Required dependency unavailable | `DEPENDENCY_UNAVAILABLE` |
 | 504 | Upstream exceeded the configured timeout | `UPSTREAM_TIMEOUT` |

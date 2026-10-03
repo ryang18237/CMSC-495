@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import LoginPanel from './components/LoginPanel.jsx'
 import CustomerChat from './pages/CustomerChat.jsx'
+import MyRecordPanel from './components/MyRecordPanel.jsx'
 import AgentDashboard from './pages/AgentDashboard.jsx'
 import { api } from './api/client.js'
 
@@ -54,7 +55,7 @@ export default function App()
   return (
     <main className="shell">
       <nav className="topbar">
-        <span className="brand">SkillBridge AI</span>
+        <span className="brand">SkillbridgeAI</span>
         <span className="muted">
           {session.displayName} &middot; {session.role}
         </span>
@@ -67,8 +68,54 @@ export default function App()
       {session.role === 'AGENT' ? (
         <AgentDashboard session={session} />
       ) : (
-        <CustomerChat session={session} />
+        <MemberView session={session} />
       )}
     </main>
+  )
+}
+
+/**
+ * What a member sees: a conversation, and the profile it draws on.
+ *
+ * The profile outgrew the sidebar it started in -- four kinds of entry, each
+ * with a name and a place, do not fit in 320 pixels without every line
+ * wrapping. It gets its own tab and the full width, which also lets the
+ * conversation have the full width back.
+ */
+function MemberView({ session })
+{
+  const [tab, setTab] = useState('chat')
+
+  const tabs = [
+    ['chat', 'Chat'],
+    ['profile', 'My profile'],
+  ]
+
+  return (
+    <div className="member-shell">
+      <div className="tabs" role="tablist" aria-label="Member sections">
+        {tabs.map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={tab === key}
+            className={`tab ${tab === key ? 'active' : ''}`}
+            onClick={() => setTab(key)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Both stay mounted: switching tabs should not throw away a half-typed
+          question or reload the profile. */}
+      <div hidden={tab !== 'chat'}>
+        <CustomerChat session={session} />
+      </div>
+      <div hidden={tab !== 'profile'}>
+        <MyRecordPanel session={session} />
+      </div>
+    </div>
   )
 }
