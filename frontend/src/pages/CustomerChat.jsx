@@ -34,6 +34,10 @@ export default function CustomerChat({ session })
   const [busy, setBusy] = useState(false)
   const [feedbackGiven, setFeedbackGiven] = useState({})
   const transcriptRef = useRef(null)
+  // AI models this server has keys for. The member picks one; the key itself
+  // never reaches the browser -- only a provider id is sent with each message.
+  const [providers, setProviders] = useState([])
+  const [provider, setProvider] = useState('')
   // Once a conversation has been handed over, a counsellor may answer at any
   // time, so the chat watches for their replies instead of sitting still.
   const isEscalated = messages.some((message) => message.status === 'ESCALATED')
@@ -79,6 +83,30 @@ export default function CustomerChat({ session })
 
   useEffect(() =>
   {
+    let cancelled = false
+    api
+      .listProviders(session.token)
+      .then((options) =>
+      {
+        if (cancelled || !Array.isArray(options)) return
+        setProviders(options)
+        const preferred = options.find((option) => option.isDefault) ?? options[0]
+        setProvider(preferred ? preferred.providerId : '')
+      })
+      .catch(() =>
+      {
+        // Without the list the chat still works on the server's default model.
+      })
+    return () =>
+    {
+      cancelled = true
+    }
+  }, [session.token])
+
+  const providerLabel = (id) => providers.find((option) => option.providerId === id)?.label ?? id
+
+  useEffect(() =>
+  {
     const node = transcriptRef.current
     // scrollTo is absent in some environments (jsdom, older browsers).
     if (node && typeof node.scrollTo === 'function')
@@ -100,7 +128,7 @@ export default function CustomerChat({ session })
 
     try
     {
-      const reply = await api.sendMessage(session.token, conversationId, text)
+      const reply = await api.sendMessage(session.token, conversationId, text, provider || undefined)
       setMessages((current) => [
         ...current,
         {
@@ -108,6 +136,7 @@ export default function CustomerChat({ session })
           content: reply.response,
           status: reply.status,
           escalationReason: reply.escalationReason,
+          answeredBy: reply.answeredBy,
           messageId: reply.messageId,
           key: reply.messageId,
         },
@@ -168,6 +197,22 @@ export default function CustomerChat({ session })
           </p>
         </div>
         <div className="chat-actions">
+          {providers.length > 1 && (
+            <label className="model-picker">
+              <span className="muted">Model</span>
+              <select
+                aria-label="AI model"
+                value={provider}
+                onChange={(event) => setProvider(event.target.value)}
+              >
+                {providers.map((option) => (
+                  <option key={option.providerId} value={option.providerId}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <button
             type="button"
             className="secondary"
@@ -211,6 +256,10 @@ export default function CustomerChat({ session })
 
             {message.escalationReason && (
               <p className="tag">{ESCALATION_LABELS[message.escalationReason] ?? message.escalationReason}</p>
+            )}
+
+            {message.answeredBy && providers.length > 1 && (
+              <p className="tag">Answered by {providerLabel(message.answeredBy)}</p>
             )}
 
             {message.sender === 'ASSISTANT' && message.messageId && (

@@ -299,15 +299,15 @@ frontend/
 docs/
   API.md                       Endpoint reference
   ARCHITECTURE.md              Component boundaries and data flow (as built)
-  AI_INTEGRATION_HANDOFF.md    Integration Lead's implementation brief
+  AI_FEATURES.md               The assistant and the pathway recommender
   SECURITY.md                  Secret handling and access rules
 scripts/smoke_test.sh    End-to-end integration check used by CI
 ```
 
 ## Alpha limitations (deliberate)
 
-- `AnthropicProvider` is an interface stub; `AI_PROVIDER=mock` is the default.
-  See `docs/AI_INTEGRATION_HANDOFF.md`.
+- The chat assistant runs on the mock provider unless a team member sets their
+  own key; the pathway recommender needs none. See `docs/AI_FEATURES.md`.
 - The cache and the rate-limit counters are process-local. Production moves
   both to the shared cache so instances stay stateless.
 - Monitoring counters are per-instance and are read through an endpoint rather

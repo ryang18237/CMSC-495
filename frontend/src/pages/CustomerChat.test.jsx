@@ -71,4 +71,43 @@ describe('CustomerChat', () =>
 
     expect(await screen.findByRole('alert')).toHaveTextContent('INVALID_MESSAGE')
   })
+
+  it('lets the member pick a model and sends the choice with the message', async () =>
+  {
+    vi.spyOn(api, 'createConversation').mockResolvedValue({ conversationId: 'conv-9' })
+    vi.spyOn(api, 'listProviders').mockResolvedValue([
+      { providerId: 'anthropic', label: 'Claude', model: 'claude-haiku-4-5-20251001', isDefault: true },
+      { providerId: 'openai', label: 'ChatGPT', model: 'gpt-6-luna', isDefault: false },
+    ])
+    vi.spyOn(api, 'sendMessage').mockResolvedValue({
+      conversationId: 'conv-9',
+      messageId: 'msg-9',
+      response: 'Network+ builds on your A+.',
+      status: 'ANSWERED',
+      escalationReason: null,
+      answeredBy: 'openai',
+    })
+
+    render(<CustomerChat session={session} />)
+    await userEvent.selectOptions(await screen.findByLabelText('AI model'), 'openai')
+    await userEvent.type(screen.getByLabelText('Message'), 'Which certification next?')
+    await userEvent.click(screen.getByRole('button', { name: 'Send' }))
+
+    await waitFor(() =>
+      expect(api.sendMessage).toHaveBeenCalledWith('test-token', 'conv-9', 'Which certification next?', 'openai'),
+    )
+    expect(await screen.findByText('Answered by ChatGPT')).toBeInTheDocument()
+  })
+
+  it('hides the picker when only one model is available', async () =>
+  {
+    vi.spyOn(api, 'createConversation').mockResolvedValue({ conversationId: 'conv-10' })
+    vi.spyOn(api, 'listProviders').mockResolvedValue([
+      { providerId: 'builtin', label: 'Built-in advisor', model: 'skillbridge-advisor-v3', isDefault: true },
+    ])
+    render(<CustomerChat session={session} />)
+    await waitFor(() => expect(api.listProviders).toHaveBeenCalled())
+    expect(screen.queryByLabelText('AI model')).not.toBeInTheDocument()
+  })
 })
+

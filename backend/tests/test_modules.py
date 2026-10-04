@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.bootstrap import CUSTOMER_ID
+from app.config import get_settings
 from app.modules.ai_integration.contracts import (
     AIOutcome,
     AIProviderError,
@@ -18,7 +19,7 @@ from app.modules.ai_integration.contracts import (
 )
 from app.modules.ai_integration.providers.anthropic_provider import AnthropicProvider
 from app.modules.ai_integration.providers.base import AIProvider
-from app.modules.ai_integration.providers.mock import MockAIProvider
+from app.modules.ai_integration.providers.builtin import BuiltInAdvisor
 from app.modules.ai_integration.service import AIIntegrationService, build_provider
 from app.modules.analytics.worker import DateRange, LearningAnalyticsWorker
 from app.modules.conversation.service import RESPONSE_TARGET_SECONDS, ConversationService
@@ -126,7 +127,7 @@ def test_prompt_contains_only_permitted_context() -> None:
         customer_facts=["Completed training: Network Administration Course"],
         knowledge_snippets=[("Certification pathways", "Completed training often covers it.")],
     )
-    prompt = AIIntegrationService(MockAIProvider()).build_prompt(context)
+    prompt = AIIntegrationService(BuiltInAdvisor()).build_prompt(context)
 
     assert "Completed training: Network Administration Course" in prompt.system
     assert "Certification pathways" in prompt.system
@@ -144,7 +145,7 @@ def test_prompt_truncates_long_articles() -> None:
         customer_message="Tell me about apprenticeships",
         knowledge_snippets=[("Apprenticeships", "word " * 500)],
     )
-    prompt = AIIntegrationService(MockAIProvider()).build_prompt(context)
+    prompt = AIIntegrationService(BuiltInAdvisor()).build_prompt(context)
     assert "..." in prompt.system
 
 
@@ -156,7 +157,7 @@ def test_prompt_keeps_only_recent_history() -> None:
         customer_message="latest",
         history=history,
     )
-    prompt = AIIntegrationService(MockAIProvider()).build_prompt(context)
+    prompt = AIIntegrationService(BuiltInAdvisor()).build_prompt(context)
     assert len(prompt.messages) == 7  # six history turns plus the new one
 
 
@@ -208,7 +209,7 @@ def test_retryable_failure_is_retried_then_falls_back() -> None:
     provider = _AlwaysFailingProvider()
     result = AIIntegrationService(provider).generate_response(_context())
 
-    assert provider.calls == 3  # initial attempt plus two retries
+    assert provider.calls == get_settings().ai_max_retries + 1  # first attempt plus retries
     assert result.outcome is AIOutcome.PROVIDER_FAILURE
     assert "upstream down" not in result.text
     assert result.error_detail == "upstream down"
@@ -223,16 +224,16 @@ def test_non_retryable_failure_is_not_retried() -> None:
 
 
 def test_mock_provider_reports_unsupported_topic() -> None:
-    result = AIIntegrationService(MockAIProvider()).generate_response(
+    result = AIIntegrationService(BuiltInAdvisor()).generate_response(
         _context("What is the capital of France?")
     )
     assert result.outcome is AIOutcome.UNSUPPORTED
 
 
 def test_provider_factory_selects_by_configuration() -> None:
-    assert isinstance(build_provider("mock"), MockAIProvider)
+    assert isinstance(build_provider("mock"), BuiltInAdvisor)
     assert isinstance(build_provider("anthropic"), AnthropicProvider)
-    assert isinstance(build_provider("something-else"), MockAIProvider)
+    assert isinstance(build_provider("something-else"), BuiltInAdvisor)
 
 
 def test_anthropic_provider_reports_unavailable_without_a_key() -> None:

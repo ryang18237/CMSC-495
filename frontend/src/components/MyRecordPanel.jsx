@@ -61,7 +61,7 @@ function readAsBase64(file)
   })
 }
 
-export default function MyRecordPanel({ session, onChange })
+export default function MyRecordPanel({ session, onChange, refreshKey = 0 })
 {
   const [record, setRecord] = useState(null)
   const [kind, setKind] = useState('CREDENTIAL')
@@ -88,7 +88,10 @@ export default function MyRecordPanel({ session, onChange })
   useEffect(() =>
   {
     load()
-  }, [load])
+    // refreshKey changes when something outside this panel edits the profile
+    // -- putting a suggestion on the plan from Recommended next steps, for
+    // one -- so the panel shows it without a reload.
+  }, [load, refreshKey])
 
   async function changed()
   {

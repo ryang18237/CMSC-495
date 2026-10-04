@@ -17,7 +17,7 @@ from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.staticfiles import StaticFiles
 from starlette.responses import HTMLResponse, JSONResponse, Response
 
-from app.api.v1 import agent, agent_handoff, auth, conversations, health, ops, profile
+from app.api.v1 import agent, agent_handoff, ai, auth, conversations, health, ops, pathways, profile
 from app.config import get_settings
 from app.errors import error_body, register_exception_handlers
 from app.modules.monitoring.service import get_metrics
@@ -67,6 +67,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             )
     yield
 
+    # Release the AI provider's shared connection pool on an orderly shutdown
+    # (peer review, section 4). Goes through the module's entry point: nothing
+    # outside AI Integration may import a provider directly.
+    from app.modules.ai_integration.service import shutdown as shutdown_ai
+
+    shutdown_ai()
+
 
 # Groups shown in the interactive documentation at /docs, in this order.
 OPENAPI_TAGS = [
@@ -85,6 +92,15 @@ OPENAPI_TAGS = [
         "name": "profile",
         "description": "My record: the member's service record and the training and "
         "credentials they added, used in every conversation. CUSTOMER role only.",
+    },
+    {
+        "name": "pathways",
+        "description": "Recommended next credentials and programs, ranked against what the "
+        "signed-in member has completed. Runs locally; no AI provider key needed.",
+    },
+    {
+        "name": "ai",
+        "description": "The AI models this server can use. Keys stay on the server.",
     },
     {"name": "ops", "description": "Operational metrics for this instance. AGENT role only."},
 ]
@@ -172,6 +188,8 @@ def create_app() -> FastAPI:
     app.include_router(agent_handoff.router)
     app.include_router(ops.router)
     app.include_router(profile.router)
+    app.include_router(pathways.router)
+    app.include_router(ai.router)
 
     return app
 

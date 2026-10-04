@@ -74,12 +74,15 @@ export const api = {
 
   createConversation: (token) => request('/api/v1/conversations', { method: 'POST', token }),
 
-  sendMessage: (token, conversationId, message) =>
+  // `provider` is optional: an id from listProviders, or omitted for the default.
+  sendMessage: (token, conversationId, message, provider) =>
     request(`/api/v1/conversations/${conversationId}/messages`, {
       method: 'POST',
       token,
-      body: { message },
+      body: provider ? { message, provider } : { message },
     }),
+
+  listProviders: (token) => request('/api/v1/ai/providers', { token }),
 
   getConversation: (token, conversationId) =>
     request(`/api/v1/conversations/${conversationId}`, { token }),

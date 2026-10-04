@@ -68,6 +68,8 @@ class ResponseValidationService:
 
         if not text:
             failures.append("empty response")
+        if result.truncated:
+            failures.append("response was cut off at the token limit")
         if len(text) > max_length:
             failures.append(f"response exceeds {max_length} characters")
         if _SSN.search(text) or _CARD.search(text):

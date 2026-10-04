@@ -176,6 +176,7 @@ class ConversationService:
             status=MessageStatus.ANSWERED,
             escalation_reason=None,
             timestamp=_as_utc(stored.created_at),
+            answered_by=self._ai.provider_name,
         )
 
     # ------------------------------------------------------------------

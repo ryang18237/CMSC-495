@@ -11,6 +11,7 @@ contract the rest of the platform depends on. Two things are going on here:
     sent to the AI provider limited to what the question actually requires.
 """
 
+import re
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -83,6 +84,19 @@ _INQUIRY_FIELDS: dict[str, tuple[str, ...]] = {
     ),
     # "When should I start an internship?" -- needs timing, not the lists.
     "TRANSITION": ("service_branch", "years_of_service", "separation_date"),
+    # "What do you have on file for me?" -- the member asking to see their own
+    # profile back. Everything they entered themselves is fair game; the one
+    # field withheld is the separation date, which they did not enter and
+    # which no answer of this kind needs.
+    "PROFILE": (
+        "service_branch",
+        "occupational_specialty",
+        "years_of_service",
+        "completed_training",
+        "credentials",
+        "education",
+        "experience",
+    ),
     "GENERAL": ("service_branch",),
 }
 
@@ -161,6 +175,19 @@ UNKNOWN_CONTEXT = CustomerContext(
 )
 
 
+# Words are matched on their stems. Whole-word matching meant that "what are
+# the next certs I should get?" classified as GENERAL, so the prompt carried
+# none of the member's credentials and the answer came back generic. A stem
+# covers cert, certs, certificate, certification and certified at once.
+# "certainly" is removed first: it is common, and it is not this topic.
+_CERTAINLY = re.compile(r"\bcertain\w*")
+
+
+def _mentions(text: str, stems: tuple[str, ...]) -> bool:
+    """True when any stem starts a word in `text`."""
+    return any(re.search(rf"\b{re.escape(stem)}", text) for stem in stems)
+
+
 def classify_inquiry(message: str) -> str:
     """Decide what kind of question this is, using fixed keyword rules.
 
@@ -169,51 +196,73 @@ def classify_inquiry(message: str) -> str:
     to be predictable and reviewable. Order matters: the more specific
     categories are checked first.
     """
-    lowered = message.lower()
+    lowered = _CERTAINLY.sub("", message.lower())
+
+    # Asked before anything else: a member asking what the platform knows
+    # about them is asking about their own profile, whatever else the
+    # sentence happens to mention.
+    profile_words = (
+        "my profile",
+        "on file",
+        "my record",
+        "what do you know about me",
+        "what have i",
+        "what do i have",
+        "my background",
+        "my experience",
+        "my qualification",
+    )
+    if _mentions(lowered, profile_words):
+        return "PROFILE"
+
+    # Weighing a degree against a credential is an education question even
+    # though it says "certification", so this pair is checked before the
+    # credential words below.
+    if _mentions(lowered, ("degree", "college")) and _mentions(lowered, ("cert", "credential")):
+        return "EDUCATION"
 
     credential_words = (
-        "certification",
-        "certificate",
-        "certified",
+        "cert",
         "credential",
-        "license",
-        "licensing",
+        "licen",
         "exam",
         "comptia",
+        "ccna",
         "security+",
         "pmp",
+        "badge",
     )
-    if any(word in lowered for word in credential_words):
+    if _mentions(lowered, credential_words):
         return "CREDENTIAL"
 
     education_words = (
         "degree",
         "college",
-        "university",
+        "universit",
         "school",
         "course",
         "class",
         "tuition",
         "study",
-        "studying",
-        "education",
+        "educat",
         "associate",
         "bachelor",
+        "master",
+        "gi bill",
     )
-    if any(word in lowered for word in education_words):
+    if _mentions(lowered, education_words):
         return "EDUCATION"
 
     transition_words = (
         "skillbridge",
         "internship",
         "transition",
-        "separating",
-        "separation",
+        "separat",
         "terminal leave",
         "ets",
         "getting out",
     )
-    if any(word in lowered for word in transition_words):
+    if _mentions(lowered, transition_words):
         return "TRANSITION"
 
     career_words = (
@@ -222,14 +271,19 @@ def classify_inquiry(message: str) -> str:
         "job",
         "career",
         "hiring",
+        "hire",
         "interview",
         "employer",
         "civilian",
-        "apprenticeship",
+        "apprentice",
         "salary",
         "translate",
+        "next step",
+        "what should i",
+        "recommend",
+        "advice",
     )
-    if any(word in lowered for word in career_words):
+    if _mentions(lowered, career_words):
         return "CAREER"
 
     return "GENERAL"

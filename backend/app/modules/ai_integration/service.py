@@ -5,6 +5,7 @@ the application talks to this service and never to a provider directly.
 """
 
 import time
+from dataclasses import dataclass
 
 from app.config import get_settings
 from app.modules.ai_integration.contracts import (
@@ -16,7 +17,8 @@ from app.modules.ai_integration.contracts import (
 )
 from app.modules.ai_integration.providers.anthropic_provider import AnthropicProvider
 from app.modules.ai_integration.providers.base import AIProvider
-from app.modules.ai_integration.providers.mock import MockAIProvider
+from app.modules.ai_integration.providers.builtin import MODEL, BuiltInAdvisor
+from app.modules.ai_integration.providers.openai_provider import OpenAIProvider
 
 FALLBACK_MESSAGE = (
     "I'm sorry -- I can't reach the assistant service right now, and I'd rather not "
@@ -42,12 +44,91 @@ SYSTEM_INSTRUCTION = (
 )
 
 
+# Long enough for a failure class and an HTTP status; too short to carry a
+# meaningful excerpt of member content if a provider ever included one.
+ERROR_DETAIL_LIMIT = 200
+
+
+def shutdown() -> None:
+    """Release resources held across requests. Called once, at application shutdown."""
+    from app.modules.ai_integration.providers._http import reset_shared_http_client
+
+    reset_shared_http_client()
+
+
+# Every provider the platform knows, with the name a member sees. The built-in
+# advisor needs no key and is therefore always available, which is what lets
+# the platform be installed and used with no sign-ups and nothing to configure.
+_PROVIDERS: dict[str, tuple[str, type[AIProvider]]] = {
+    "builtin": ("Built-in advisor", BuiltInAdvisor),
+    "anthropic": ("Claude", AnthropicProvider),
+    "openai": ("ChatGPT", OpenAIProvider),
+}
+
+# `mock` was this provider's name while it was a test double. Configuration
+# files and CI still say it, so it keeps working.
+_ALIASES = {"mock": "builtin", "": "builtin"}
+
+
+def _canonical(name: str) -> str:
+    cleaned = name.strip().lower()
+    return _ALIASES.get(cleaned, cleaned)
+
+
+@dataclass(frozen=True)
+class ProviderOption:
+    provider_id: str
+    label: str
+    model: str
+    is_default: bool
+
+
 def build_provider(name: str | None = None) -> AIProvider:
-    """Provider factory. Selection is configuration, not code."""
-    selected = (name or get_settings().ai_provider).strip().lower()
-    if selected == "anthropic":
-        return AnthropicProvider()
-    return MockAIProvider()
+    """Provider factory. Selection is configuration, or a member's choice.
+
+    An unknown name falls back to the built-in advisor rather than failing:
+    a typo in configuration should degrade the answers, not the platform.
+    """
+    selected = _canonical(name or get_settings().ai_provider)
+    _, provider_class = _PROVIDERS.get(selected, _PROVIDERS["builtin"])
+    return provider_class()
+
+
+def _model_for(provider_id: str) -> str:
+    settings = get_settings()
+    return {
+        "anthropic": settings.anthropic_model,
+        "openai": settings.openai_model,
+    }.get(provider_id, MODEL)
+
+
+def available_providers() -> list[ProviderOption]:
+    """Providers a member may choose: those with a key configured, plus the mock.
+
+    Availability is decided here, on the server, from configuration. The keys
+    themselves never leave the process -- a member only ever sees a name.
+    """
+    ready = [
+        provider_id
+        for provider_id, (_, provider_class) in _PROVIDERS.items()
+        if provider_class().health() == "ok"
+    ]
+    configured = _canonical(get_settings().ai_provider)
+    default = configured if configured in ready else "builtin"
+    return [
+        ProviderOption(
+            provider_id=provider_id,
+            label=_PROVIDERS[provider_id][0],
+            model=_model_for(provider_id),
+            is_default=provider_id == default,
+        )
+        for provider_id in ready
+    ]
+
+
+def is_available(provider_id: str) -> bool:
+    wanted = _canonical(provider_id)
+    return any(option.provider_id == wanted for option in available_providers())
 
 
 class AIIntegrationService:
@@ -98,6 +179,10 @@ class AIIntegrationService:
                 last_error = exc
                 if not exc.retryable or attempt == settings.ai_max_retries:
                     break
+                # A retry that starts after the budget can only finish after the
+                # member has already waited too long. Hand them to a person now.
+                if time.monotonic() - started >= settings.ai_retry_budget_seconds:
+                    break
                 time.sleep(min(0.2 * (2**attempt), 1.0))
                 continue
             except NotImplementedError as exc:
@@ -116,6 +201,7 @@ class AIIntegrationService:
                 model=provider_response.model,
                 sources=sources,
                 latency_ms=elapsed_ms,
+                truncated=provider_response.stop_reason == "max_tokens",
             )
 
         return self.handle_provider_failure(
@@ -128,6 +214,11 @@ class AIIntegrationService:
 
         Provider error text is kept in `error_detail` for server-side logging and
         is never returned to the customer.
+
+        Invariant: `error_detail` is the failure class and HTTP status, never
+        content. Today's providers only raise such messages, but a future one
+        that quoted a response excerpt would write member data into the log, so
+        the length is capped here where every provider passes through.
         """
         return AIResult(
             outcome=AIOutcome.PROVIDER_FAILURE,
@@ -135,5 +226,5 @@ class AIIntegrationService:
             model=self._provider.name,
             sources=[],
             latency_ms=latency_ms,
-            error_detail=str(error),
+            error_detail=str(error)[:ERROR_DETAIL_LIMIT],
         )

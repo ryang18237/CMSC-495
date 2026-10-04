@@ -106,6 +106,10 @@ class MessageRequest(ApiModel):
     # Length is validated in the service layer so that an over-long message
     # returns 422 INVALID_MESSAGE with the documented wording.
     message: str
+    # Optional choice of model for this message: "anthropic", "openai" or
+    # "mock". Omitted means the server's default. Only providers listed by
+    # GET /api/v1/ai/providers are accepted.
+    provider: str | None = None
 
 
 class ChatResponse(ApiModel):
@@ -115,6 +119,8 @@ class ChatResponse(ApiModel):
     status: MessageStatus
     escalation_reason: EscalationReason | None = None
     timestamp: datetime
+    # Which provider produced an ANSWERED reply. Null when escalated.
+    answered_by: str | None = None
 
 
 # --------------------------------------------------------------------------
@@ -350,3 +356,52 @@ class RecordImportResponse(ApiModel):
     # chosen items to /api/v1/profile/record/items/bulk.
     candidates: list[RecordCandidate]
     skipped_lines: int
+
+
+# GET /api/v1/pathways/recommended (member-facing)
+# --------------------------------------------------------------------------
+class PathwayStrength(str, Enum):
+    STRONG = "STRONG"
+    GOOD = "GOOD"
+    EXPLORATORY = "EXPLORATORY"
+
+
+class PathwayReason(str, Enum):
+    NEXT_STEP = "NEXT_STEP"
+    BUILDS_ON = "BUILDS_ON"
+    STARTING_POINT = "STARTING_POINT"
+
+
+class PathwayBasis(str, Enum):
+    COMPLETED_TRAINING = "COMPLETED_TRAINING"
+    GENERAL = "GENERAL"
+
+
+class PathwayRecommendationView(ApiModel):
+    pathway_id: str
+    title: str
+    kind: str
+    field: str
+    summary: str
+    score: float
+    strength: PathwayStrength
+    reason: PathwayReason
+    builds_on: str | None
+    matched_terms: list[str]
+
+
+class PathwayRecommendationsResponse(ApiModel):
+    basis: PathwayBasis
+    method: str
+    recommendations: list[PathwayRecommendationView]
+    disclaimer: str
+
+
+# --------------------------------------------------------------------------
+# GET /api/v1/ai/providers
+# --------------------------------------------------------------------------
+class AIProviderView(ApiModel):
+    provider_id: str
+    label: str
+    model: str
+    is_default: bool

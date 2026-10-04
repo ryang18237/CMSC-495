@@ -10,7 +10,7 @@ def test_health_reports_healthy_with_dependencies(client: TestClient) -> None:
     body = response.json()
     assert body["status"] == "healthy"
     assert body["dependencies"]["database"] == "ok"
-    assert body["dependencies"]["ai_provider_name"] == "mock"
+    assert body["dependencies"]["ai_provider_name"] == "builtin"
     assert "timestamp" in body
     # The health endpoint must not expose customer data.
     assert "customer" not in response.text.lower()

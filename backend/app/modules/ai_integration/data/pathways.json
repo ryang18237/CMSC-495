@@ -1,0 +1,258 @@
+{
+  "_about": "Illustrative catalog for the pathway recommender. Titles name widely known civilian credentials and programs so the recommendations read realistically; the summaries are written for this project and are not guidance from any certifying body, school or agency. Nothing here states eligibility, cost or funding.",
+  "pathways": [
+    {
+      "id": "comptia-a-plus",
+      "title": "CompTIA A+",
+      "kind": "CERTIFICATION",
+      "field": "Information Technology",
+      "summary": "Entry-level IT support credential covering hardware, operating systems, troubleshooting and help desk work.",
+      "keywords": ["it support", "help desk", "hardware", "troubleshooting", "operating systems", "computer repair"],
+      "aliases": ["a+", "comptia a+"],
+      "follows": [],
+      "starter": true
+    },
+    {
+      "id": "comptia-network-plus",
+      "title": "CompTIA Network+",
+      "kind": "CERTIFICATION",
+      "field": "Information Technology",
+      "summary": "Vendor-neutral networking credential covering how networks are designed, configured, secured and repaired.",
+      "keywords": ["network", "network administration", "networking", "routing", "switching", "tcp ip", "infrastructure", "troubleshooting"],
+      "aliases": ["network+", "comptia network+"],
+      "follows": ["comptia-a-plus"],
+      "starter": false
+    },
+    {
+      "id": "comptia-security-plus",
+      "title": "CompTIA Security+",
+      "kind": "CERTIFICATION",
+      "field": "Cybersecurity",
+      "summary": "Baseline security credential covering threats, access control, risk management and securing networks.",
+      "keywords": ["information assurance", "cybersecurity", "security", "network security", "risk management", "access control", "threats"],
+      "aliases": ["security+", "comptia security+"],
+      "follows": ["comptia-a-plus", "comptia-network-plus"],
+      "starter": false
+    },
+    {
+      "id": "cisco-ccna",
+      "title": "Cisco Certified Network Associate (CCNA)",
+      "kind": "CERTIFICATION",
+      "field": "Information Technology",
+      "summary": "Networking credential focused on configuring and administering routed and switched enterprise networks.",
+      "keywords": ["network administration", "routing", "switching", "network", "enterprise network", "cisco", "infrastructure"],
+      "aliases": ["ccna"],
+      "follows": ["comptia-network-plus"],
+      "starter": false
+    },
+    {
+      "id": "comptia-cysa-plus",
+      "title": "CompTIA Cybersecurity Analyst (CySA+)",
+      "kind": "CERTIFICATION",
+      "field": "Cybersecurity",
+      "summary": "Analyst credential for detecting threats, reading security data and responding to incidents.",
+      "keywords": ["cybersecurity", "security analyst", "threat detection", "incident response", "information assurance", "security operations"],
+      "aliases": ["cysa+"],
+      "follows": ["comptia-security-plus"],
+      "starter": false
+    },
+    {
+      "id": "comptia-linux-plus",
+      "title": "CompTIA Linux+",
+      "kind": "CERTIFICATION",
+      "field": "Information Technology",
+      "summary": "Systems administration credential for installing, configuring and scripting Linux servers.",
+      "keywords": ["linux", "systems administration", "server", "scripting", "information systems", "operating systems"],
+      "aliases": ["linux+"],
+      "follows": ["comptia-a-plus"],
+      "starter": false
+    },
+    {
+      "id": "aws-cloud-practitioner",
+      "title": "AWS Certified Cloud Practitioner",
+      "kind": "CERTIFICATION",
+      "field": "Cloud Computing",
+      "summary": "Foundational cloud credential covering core services, security responsibilities and cost concepts.",
+      "keywords": ["cloud", "cloud computing", "infrastructure", "information systems", "servers", "aws"],
+      "aliases": ["aws cloud practitioner"],
+      "follows": [],
+      "starter": false
+    },
+    {
+      "id": "itil-foundation",
+      "title": "ITIL 4 Foundation",
+      "kind": "CERTIFICATION",
+      "field": "IT Service Management",
+      "summary": "Service management framework used by IT operations and help desk teams to run services reliably.",
+      "keywords": ["it service management", "help desk", "operations", "information systems", "service desk", "it support"],
+      "aliases": ["itil"],
+      "follows": [],
+      "starter": false
+    },
+    {
+      "id": "bs-information-technology",
+      "title": "Bachelor of Science in Information Technology",
+      "kind": "DEGREE",
+      "field": "Information Technology",
+      "summary": "Four-year degree in networks, systems, security and programming. Prior military IT training is often reviewed for credit.",
+      "keywords": ["information technology", "information systems", "network", "cybersecurity", "programming", "systems administration"],
+      "aliases": [],
+      "follows": [],
+      "starter": false
+    },
+    {
+      "id": "nremt-paramedic",
+      "title": "Paramedic (NREMT)",
+      "kind": "CERTIFICATION",
+      "field": "Emergency Medical Services",
+      "summary": "Advanced prehospital care credential building on EMT training: advanced airway, cardiac care and medications.",
+      "keywords": ["emergency medical", "emergency medical technician", "emt", "prehospital", "patient care", "trauma", "combat medic", "advanced life support"],
+      "aliases": ["paramedic", "nremt-p"],
+      "follows": ["emt-basic"],
+      "starter": false
+    },
+    {
+      "id": "emt-basic",
+      "title": "Emergency Medical Technician (EMT)",
+      "kind": "CERTIFICATION",
+      "field": "Emergency Medical Services",
+      "summary": "Entry credential for emergency medical response: assessment, basic life support and patient transport.",
+      "keywords": ["emergency medical", "patient care", "basic life support", "first aid", "trauma", "prehospital"],
+      "aliases": ["emt", "emt-basic", "emergency medical technician"],
+      "follows": [],
+      "starter": false
+    },
+    {
+      "id": "lpn-program",
+      "title": "Licensed Practical Nurse (LPN) Program",
+      "kind": "PROGRAM",
+      "field": "Nursing",
+      "summary": "Program preparing for practical nursing licensure. Corpsman and medic experience maps closely to its clinical content.",
+      "keywords": ["nursing", "patient care", "clinical", "hospital", "hospital corpsman", "combat medic", "healthcare"],
+      "aliases": ["lpn"],
+      "follows": ["emt-basic"],
+      "starter": false
+    },
+    {
+      "id": "bsn-nursing",
+      "title": "Bachelor of Science in Nursing (BSN)",
+      "kind": "DEGREE",
+      "field": "Nursing",
+      "summary": "Degree leading to registered nurse licensure, with clinical rotations across hospital settings.",
+      "keywords": ["nursing", "registered nurse", "clinical", "hospital", "patient care", "healthcare", "hospital corpsman"],
+      "aliases": ["bsn", "rn"],
+      "follows": ["lpn-program"],
+      "starter": false
+    },
+    {
+      "id": "healthcare-administration",
+      "title": "Healthcare Administration Certificate",
+      "kind": "PROGRAM",
+      "field": "Healthcare Management",
+      "summary": "Covers how clinics and hospitals are run: operations, records, compliance and leading clinical staff.",
+      "keywords": ["healthcare", "hospital", "administration", "leadership", "operations", "management"],
+      "aliases": [],
+      "follows": [],
+      "starter": false
+    },
+    {
+      "id": "instructional-design",
+      "title": "Instructional Design Certificate",
+      "kind": "PROGRAM",
+      "field": "Education and Training",
+      "summary": "Designing courses and training material for adult learners, including how to measure whether training worked.",
+      "keywords": ["instructor", "training", "teaching", "curriculum", "adult learning", "education", "instructor training"],
+      "aliases": [],
+      "follows": [],
+      "starter": false
+    },
+    {
+      "id": "pmp",
+      "title": "Project Management Professional (PMP)",
+      "kind": "CERTIFICATION",
+      "field": "Project Management",
+      "summary": "Senior project management credential for leading teams, schedules, budgets and risk on larger projects.",
+      "keywords": ["project management", "leadership", "leader", "planning", "team leader", "operations", "supervision"],
+      "aliases": ["pmp"],
+      "follows": ["capm"],
+      "starter": false
+    },
+    {
+      "id": "capm",
+      "title": "Certified Associate in Project Management (CAPM)",
+      "kind": "CERTIFICATION",
+      "field": "Project Management",
+      "summary": "Entry project management credential covering the vocabulary and process of running a project.",
+      "keywords": ["project management", "planning", "coordination", "leader", "operations"],
+      "aliases": ["capm"],
+      "follows": [],
+      "starter": true
+    },
+    {
+      "id": "lean-six-sigma-green-belt",
+      "title": "Lean Six Sigma Green Belt",
+      "kind": "CERTIFICATION",
+      "field": "Operations and Quality",
+      "summary": "Process improvement method for removing waste and variation from operations, logistics and maintenance work.",
+      "keywords": ["process improvement", "quality", "operations", "logistics", "maintenance", "efficiency"],
+      "aliases": ["six sigma green belt"],
+      "follows": [],
+      "starter": true
+    },
+    {
+      "id": "ba-organizational-leadership",
+      "title": "Bachelor of Arts in Organizational Leadership",
+      "kind": "DEGREE",
+      "field": "Leadership and Management",
+      "summary": "Degree in leading people and organisations. Military leadership courses are commonly reviewed for credit.",
+      "keywords": ["leadership", "leader", "leader course", "management", "supervision", "team leader", "organizational"],
+      "aliases": [],
+      "follows": [],
+      "starter": false
+    },
+    {
+      "id": "cdl-class-a",
+      "title": "Commercial Driver's License (CDL) Class A",
+      "kind": "LICENSE",
+      "field": "Transportation",
+      "summary": "License for operating combination commercial vehicles such as tractor-trailers.",
+      "keywords": ["motor transport", "vehicle", "driving", "commercial driving", "transport operator", "logistics"],
+      "aliases": ["cdl"],
+      "follows": [],
+      "starter": false
+    },
+    {
+      "id": "supply-chain-certificate",
+      "title": "Supply Chain Management Certificate",
+      "kind": "PROGRAM",
+      "field": "Logistics",
+      "summary": "Planning, sourcing, inventory and distribution across a supply chain.",
+      "keywords": ["logistics", "supply chain", "inventory", "transportation", "distribution", "motor transport"],
+      "aliases": [],
+      "follows": [],
+      "starter": false
+    },
+    {
+      "id": "electrical-apprenticeship",
+      "title": "Registered Electrical Apprenticeship",
+      "kind": "APPRENTICESHIP",
+      "field": "Skilled Trades",
+      "summary": "Paid on-the-job training toward journeyman electrician status, combined with classroom instruction.",
+      "keywords": ["electrical", "electronics", "wiring", "maintenance", "technician", "electronics technician"],
+      "aliases": [],
+      "follows": [],
+      "starter": false
+    },
+    {
+      "id": "fcc-grol",
+      "title": "FCC General Radiotelephone Operator License (GROL)",
+      "kind": "LICENSE",
+      "field": "Communications",
+      "summary": "License for repairing and maintaining radio communications equipment.",
+      "keywords": ["radio", "communications", "electronics", "electronics technician", "rf", "maintenance"],
+      "aliases": ["grol"],
+      "follows": [],
+      "starter": false
+    }
+  ]
+}

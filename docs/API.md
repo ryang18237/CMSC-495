@@ -75,6 +75,8 @@ Send the token on every other call: `Authorization: Bearer <accessToken>`.
 | POST | `/api/v1/profile/record/items/bulk` | Add confirmed items after an upload (member only) | 201 |
 | DELETE | `/api/v1/profile/record/items/{itemId}` | Remove an item the member added (member only) | 204 |
 | POST | `/api/v1/profile/record/import` | Read an uploaded .txt, .csv or .pdf and suggest items; saves nothing (member only) | 200 |
+| GET | `/api/v1/ai/providers` | AI models this server can use, for the member's model picker | 200 |
+| GET | `/api/v1/pathways/recommended` | Recommended next credentials and programs (member only) | 200 |
 | GET | `/api/v1/ops/metrics` | Operational counters (agent only) | 200 |
 | GET | `/api/v1/health` | Application health | 200 |
 
@@ -106,12 +108,13 @@ Authentication failures return **401**.
 ### Request
 
 ```json
-{ "message": "Which certification should I work toward next?" }
+{ "message": "Which certification should I work toward next?", "provider": "openai" }
 ```
 
 | Field | Type | Required | Constraints |
 | --- | --- | --- | --- |
 | `message` | String | Yes | 1–2,000 characters; trimmed; cannot be blank |
+| `provider` | String | No | One of the ids from `GET /api/v1/ai/providers`. Omitted means the server default |
 
 | Path parameter | Type | Constraints |
 | --- | --- | --- |
@@ -126,7 +129,8 @@ Authentication failures return **401**.
   "response": "A foundational IT certification is the closest next step.",
   "status": "ANSWERED",
   "escalationReason": null,
-  "timestamp": "2026-08-27T20:30:00Z"
+  "timestamp": "2026-08-27T20:30:00Z",
+  "answeredBy": "openai"
 }
 ```
 
@@ -138,6 +142,7 @@ Authentication failures return **401**.
 | `status` | Enum | `ANSWERED`, `ESCALATED` or `ERROR` |
 | `escalationReason` | Enum \| null | Null unless escalation occurs |
 | `timestamp` | ISO 8601 | UTC |
+| `answeredBy` | String \| null | Provider that answered (`builtin`, `anthropic`, `openai`); null when escalated |
 
 **Escalation is rule-based, not confidence-based.** The application does not
 use an undefined numeric AI confidence score. `status` becomes `ESCALATED`
@@ -153,7 +158,8 @@ when one of these deterministic conditions holds:
 
 Errors: **400** malformed identifier · **401** · **403** not the caller's
 conversation · **404** conversation missing · **409** conversation closed ·
-**413** payload too large · **422** message length · **429** rate limit.
+**413** payload too large · **422** message length, or `AI_PROVIDER_UNAVAILABLE`
+for a `provider` this server has no key for · **429** rate limit.
 
 ---
 
@@ -387,6 +393,79 @@ cannot be probed.
 
 ---
 
+## GET /api/v1/ai/providers
+
+Any signed-in user. Lists the models a member can pick in the chat: the
+built-in advisor, which needs no key and is therefore always present, plus
+every managed provider this server has a key for. **Keys are never returned**
+— only a name and a model id — and a member is never asked for one.
+
+```json
+[
+  { "providerId": "builtin", "label": "Built-in advisor", "model": "skillbridge-advisor-v3", "isDefault": false },
+  { "providerId": "anthropic", "label": "Claude", "model": "claude-haiku-4-5-20251001", "isDefault": true },
+  { "providerId": "openai", "label": "ChatGPT", "model": "gpt-6-luna", "isDefault": false }
+]
+```
+
+On a server with no keys configured the list holds `builtin` alone, and the
+platform is fully usable. `isDefault` marks the provider used when a message
+names none: `AI_PROVIDER` when its key is set, otherwise the built-in advisor.
+`mock` is accepted as the old name for `builtin`.
+
+---
+
+## GET /api/v1/pathways/recommended
+
+Member only (`CUSTOMER` role). Ranks civilian credentials, programs and
+degrees against what the signed-in member has already completed. Runs
+entirely inside the platform with no AI provider and no key, so it works in
+CI and when the provider is unavailable.
+
+The route reads the member's record with the `CREDENTIAL` permission set —
+occupational specialty, completed training and credentials held — and nothing
+else. Credentials the member already holds are never suggested.
+
+| Query | Type | Default | Rule |
+| --- | --- | --- | --- |
+| `limit` | integer | 5 | 1–10 |
+
+```json
+{
+  "basis": "COMPLETED_TRAINING",
+  "method": "tfidf-cosine/1",
+  "recommendations": [
+    {
+      "pathwayId": "comptia-security-plus",
+      "title": "CompTIA Security+",
+      "kind": "CERTIFICATION",
+      "field": "Cybersecurity",
+      "summary": "Baseline security credential covering threats, access control, risk management and securing networks.",
+      "score": 0.337,
+      "strength": "STRONG",
+      "reason": "NEXT_STEP",
+      "buildsOn": "CompTIA A+",
+      "matchedTerms": ["information assurance", "network"]
+    }
+  ],
+  "disclaimer": "Suggestions are based on the training and credentials on your record. ..."
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `basis` | `COMPLETED_TRAINING` when ranked from the record; `GENERAL` when nothing matched and broadly useful starting points are shown instead |
+| `score` | Cosine similarity between the member's record and the pathway, 0–1, plus 0.10 when `reason` is `NEXT_STEP` |
+| `strength` | `STRONG` ≥ 0.30 · `GOOD` ≥ 0.15 · `EXPLORATORY` below that |
+| `reason` | `NEXT_STEP` — follows on from a credential the member holds; `BUILDS_ON` — overlaps most with one item on the record; `STARTING_POINT` — general suggestion |
+| `buildsOn` | The credential or training the suggestion is explained by, in the member's own wording |
+| `matchedTerms` | Up to three terms the record and the pathway share, strongest first |
+
+Errors: **401** `UNAUTHORIZED` · **403** `FORBIDDEN` for a counsellor ·
+**422** `INVALID_REQUEST` for a `limit` outside 1–10.
+
+---
+
 ## Counsellor replies
 
 Owned by the Escalation Module. All four require the `AGENT` role.
@@ -582,7 +661,7 @@ Every failure uses the same shape:
 | 405 | Method not allowed on this route | `METHOD_NOT_ALLOWED` |
 | 409 | Conflicting conversation, case or review state | `CONFLICT`, `ESCALATION_ALREADY_ACTIVE`, `CONVERSATION_CLOSED`, `CASE_ALREADY_CLOSED`, `CASE_NOT_OPEN`, `CASE_ALREADY_ASSIGNED`, `RECORD_ITEM_EXISTS`, `FEEDBACK_ALREADY_RECORDED`, `RECOMMENDATION_ALREADY_REVIEWED` |
 | 413 | Payload exceeds the permitted size | `PAYLOAD_TOO_LARGE` |
-| 422 | Valid syntax, failed validation | `INVALID_REQUEST` (schema), `UNPROCESSABLE_REQUEST`, `INVALID_MESSAGE`, `INVALID_REPLY`, `INVALID_COMMENT`, `INVALID_REVIEW_DECISION`, `INVALID_RECORD_ITEM`, `RECORD_ITEM_LIMIT`, `UNSUPPORTED_RECORD_FILE`, `INVALID_RECORD_FILE` |
+| 422 | Valid syntax, failed validation | `INVALID_REQUEST` (schema), `UNPROCESSABLE_REQUEST`, `INVALID_MESSAGE`, `INVALID_REPLY`, `INVALID_COMMENT`, `INVALID_REVIEW_DECISION`, `INVALID_RECORD_ITEM`, `RECORD_ITEM_LIMIT`, `AI_PROVIDER_UNAVAILABLE`, `UNSUPPORTED_RECORD_FILE`, `INVALID_RECORD_FILE` |
 | 429 | Rate limit exceeded | `RATE_LIMIT_EXCEEDED` |
 | 500 | Unexpected server fault; details are logged, never returned | `INTERNAL_ERROR` |
 | 502 | Upstream returned an invalid response | `UPSTREAM_INVALID_RESPONSE` |
