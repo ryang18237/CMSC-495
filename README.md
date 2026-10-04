@@ -1,26 +1,30 @@
 # SkillBridge AI
 
-CMSC 495 team project — **Alpha release**.
+CMSC 495 team project — **final release, version 1.0.0**.
 
 A free education and professional development service for military members and
-veterans. It answers questions about certifications, degrees, apprenticeships
-and civilian careers, and grounds its suggestions in the training the member
-has already completed. Nothing is sold and nothing is charged for.
+veterans. Members ask about certifications, degrees, apprenticeships and
+civilian careers; the platform answers from approved reference material and
+from the training each member has already completed, recommends concrete next
+steps, and hands the conversation to a human counsellor whenever it should not
+answer on its own. Nothing is sold and nothing is charged for.
 
-Built as a modular monolith (FastAPI + PostgreSQL) with a React client, an
-isolated AI Integration Module, deterministic human-escalation rules, and
-asynchronous feedback analysis. Every record in this repository is synthetic;
-no real service member's information appears anywhere, and the knowledge base
-is illustrative sample content rather than guidance from any agency.
+Every record in this repository is synthetic. No real service member's
+information appears anywhere, and the knowledge base and pathway catalog are
+illustrative content rather than guidance from any agency.
 
-| Lead Architect | Ravonne Wade | Architecture, component boundaries, data flow |
-| Interface Designer | Ryan Gant | API contracts, component interfaces, validation, error handling |
-| Integration Lead | Benjamin Madden | AI chatbot integration, escalation path |
+| Role | Member | Owns |
+| --- | --- | --- |
+| Lead Architect | Ravonne Wade | Architecture, component boundaries, data flow, documentation, quality metrics |
+| Interface Designer | Ryan Gant | API endpoints and contracts, validation, error handling, client, CI/CD |
+| Integration Lead | Benjamin Madden | AI features, provider integration, human escalation path |
+
+---
 
 ## Quick start
 
-**Requirements: Python 3.10+ and Node 18+.** Nothing else — no database to
-install, no configuration file to edit.
+Requires **Python 3.10+** and **Node 18+**. No database to install and no file
+to edit.
 
 ```bash
 git clone https://github.com/ryang18237/CMSC-495.git
@@ -28,299 +32,156 @@ cd CMSC-495
 python3 run.py          # Windows: python run.py
 ```
 
-Or **double-click `start.command`** (macOS) or **`start.bat`** (Windows).
+Or double-click **`start.command`** (macOS) or **`start.bat`** (Windows).
 
-Your browser opens at **<http://localhost:5173>**. Click **Continue as a
-member** — nothing to type — then ask a question or click one of the example
-prompts.
+The browser opens at <http://localhost:5173>. Click **Continue as a member**,
+ask a question, and look at **Recommended next steps** beside the chat. Then
+sign out and **Continue as a counsellor** to answer the member from the other
+side. Full setup, PostgreSQL and troubleshooting: [`docs/INSTALL.md`](docs/INSTALL.md).
 
-The first run takes a couple of minutes while dependencies install. After that
-it starts in seconds. `run.py` creates the virtual environment, installs
-backend and frontend dependencies, selects a database, creates the schema,
-loads the synthetic seed data, starts both processes, and opens the browser.
-`Ctrl+C` stops everything.
-
-### What to try
-
-| Sign in as | What you see |
+| Account | Password |
 | --- | --- |
-| **Member** (`member@example.com`) | The chat |
-| **Counsellor** (`counselor@example.com`) | Three tabs: escalation queue, AI insights, operations |
+| `member@example.com` — Army IT specialist | `DemoPassw0rd!` |
+| `member2@example.com` — Navy hospital corpsman | `DemoPassw0rd!` |
+| `counselor@example.com` — career counsellor | `DemoPassw0rd!` |
 
-A development build fills the seeded credentials in for you, so one click is
-all it takes. The sign-in itself is real: it calls `/api/v1/auth/login`,
-receives a signed token, and every later request is authorised with it — so the
-401 and 403 paths still behave exactly as documented. A production build
-(`npm run build`) drops the shortcuts and shows an ordinary empty form.
+Interactive API documentation runs at <http://127.0.0.1:8000/docs>.
 
-Both seeded passwords are `DemoPassw0rd!` if you want to type them. To see the
-whole loop, escalate something as the member, then sign out and continue as the
-counsellor.
-
-The seeded member is an Army E-5 information technology specialist with a
-network administration course and an A+ certification already completed, so the
-assistant's answers refer back to that.
-
-In the chat, each example prompt demonstrates a different path:
-
-| Message | Result |
-| --- | --- |
-| `Which certification should I work toward next?` | `ANSWERED`, grounded in completed training |
-| `Should I do a degree or a certification first?` | `ANSWERED` from the knowledge base |
-| `I want to speak to a human` | `ESCALATED` / `CUSTOMER_REQUEST` — never reaches the model |
-| `I think my account was hacked` | `ESCALATED` / `SECURITY_CONCERN` |
-| `What is the capital of France?` | `ESCALATED` / `UNSUPPORTED_TOPIC` |
-| `question __force_ai_failure__` | `ESCALATED` / `AI_SERVICE_FAILURE` with a safe fallback |
-
-On the agent side, **AI insights** shows the improvement candidates the
-Learning Analytics Worker produced — press *Run analysis* after escalating a
-couple of conversations, then approve or reject one. **Operations** shows live
-counters for the instance, including the escalation rate and p95 turn latency
-against the five-second target.
-
-Interactive API documentation is at <http://127.0.0.1:8000/docs>.
-
-### `run.py` options
-
-| Command | What it does |
-| --- | --- |
-| `python run.py` | Set up if needed, then start everything |
-| `python run.py --check` | Run every check CI runs, then exit |
-| `python run.py --reset-db` | Start from an empty database |
-| `python run.py --postgres` | Require PostgreSQL; fail rather than fall back |
-| `python run.py --api-only` | API and `/docs` only, no web client |
-| `python run.py --db-url URL` | Use a specific database |
-| `python run.py --no-browser` | Do not open a browser window |
-
-### A note on the database
-
-PostgreSQL is the platform's data layer: it is what the design specifies, what
-the CI pipeline tests every commit against, and what a deployment would use.
-
-`run.py` uses PostgreSQL whenever a server is reachable. When none is — a fresh
-laptop, a teammate who has not installed it yet — it falls back to a local
-SQLite file and says so on screen, so the platform still starts and can be
-demonstrated. The application code is identical either way; only the connection
-URL differs. `/api/v1/health` reports which engine is live under
-`dependencies.database_engine`.
-
-To use PostgreSQL, install it (see below) and `run.py` will pick it up. Use
-`--postgres` to make a missing server an error instead of a fallback.
-
-## Local setup (macOS)
-
-<details>
-<summary><b>macOS</b></summary>
-
-```bash
-brew install postgresql@16
-brew services start postgresql@16
-echo 'export PATH="/opt/homebrew/opt/postgresql@16/bin:$PATH"' >> ~/.zshrc
-source ~/.zshrc
-createdb csp
-```
-
-Then create `backend/.env` with your macOS username as the database user:
-
-```bash
-cp backend/.env.example backend/.env
-```
-
-```ini
-DATABASE_URL=postgresql+psycopg://<your-mac-username>@localhost:5432/csp
-```
-
-(`whoami` prints the username.) Run `python3 run.py` again — it will report
-`PostgreSQL is reachable`.
-
-</details>
-
-<details>
-<summary><b>Windows 10 / 11</b></summary>
-
-```powershell
-winget install PostgreSQL.PostgreSQL.16
-```
-
-Or use the EDB installer from postgresql.org. Either way you set a **password
-for the `postgres` user** during installation — write it down.
-
-Close and reopen PowerShell, then:
-
-```powershell
-$env:Path += ";C:\Program Files\PostgreSQL\16\bin"
-createdb -U postgres csp
-```
-
-To make that PATH change permanent: search Windows for *"Edit the system
-environment variables"* → **Environment Variables** → select **Path** under
-*User variables* → **New** → add `C:\Program Files\PostgreSQL\16\bin`.
-
-Then create `backend\.env`:
-
-```powershell
-copy backend\.env.example backend\.env
-notepad backend\.env
-```
-
-```ini
-DATABASE_URL=postgresql+psycopg://postgres:<your-password>@localhost:5432/csp
-```
-
-If your password contains `@`, `:`, `/` or `#`, percent-encode it (`@` → `%40`,
-`:` → `%3A`, `/` → `%2F`, `#` → `%23`) or choose an alphanumeric password —
-those characters have special meaning inside a connection URL.
-
-Run `python run.py` again — it will report `PostgreSQL is reachable`.
-
-</details>
+**No API key is needed.** The built-in advisor answers from the member's
+profile, so the platform is complete as cloned. To have Claude or ChatGPT
+answer instead, whoever runs the server adds one key to `backend/.env` — see
+[Adding Claude or ChatGPT](docs/AI_FEATURES.md#adding-claude-or-chatgpt).
 
 ---
 
-## Prerequisites in detail
+## What it does
 
-<details>
-<summary><b>macOS</b></summary>
+| Feature | Detail |
+| --- | --- |
+| **My profile** | Members enter credentials, education, experience and training once — typed in, or imported from a resume or transcript — and every conversation and recommendation uses them from then on. |
+| **Conversational assistant** | Answers grounded in the member's profile and approved articles, with sources shown. Works with **no API key**: a built-in advisor composes answers from the profile and the recommender. Claude and ChatGPT are optional upgrades the operator adds; members are never asked for a key. |
+| **Pathway recommender** | Ranks 23 civilian credentials and programs against the member's record using TF-IDF and cosine similarity, explains each suggestion, never suggests something already held. Needs no key. |
+| **Response validation** | Every generated answer is checked before a member sees it — no claims of enrolling or applying, no guaranteed outcomes, no sensitive identifiers, no truncated text. |
+| **Deterministic escalation** | Five rule-based reasons hand a conversation to a person: member request, security concern, unsupported topic, validation failure, AI service failure. |
+| **Counsellor dashboard** | Escalation queue with full context, replies that appear in the member's own chat, case workflow. |
+| **Learning loop** | Feedback is recorded to an outbox; an analytics worker turns recurring patterns into candidates a counsellor approves or rejects. Nothing changes the assistant automatically. |
+| **Operations** | Per-instance counters: requests, escalation rate, p95 latency against the five-second target, cache hit rate. |
 
-```bash
-# Homebrew, if you do not have it: https://brew.sh
-brew install python@3.11 node git
-```
-
-Verify:
-
-```bash
-python3 --version   # 3.10 or newer
-node --version      # 18 or newer
-```
-
-</details>
-
-<details>
-<summary><b>Windows 10 / 11</b></summary>
-
-## Running the checks locally
-
-`run.py` only automates the steps below; both still work exactly as before.
-
-**Terminal 1 — the API**
-
-```bash
-cd backend
-source .venv/bin/activate          # Windows: .venv\Scripts\Activate.ps1
-uvicorn app.main:app --reload
-```
-
-**Terminal 2 — the web client**
-
-```bash
-cd frontend
-npm run dev
-```
-
-Then open <http://localhost:5173>. The dev server proxies `/api` to the
-backend, so the browser sees a single origin and no CORS exception is needed.
-
-Run by hand, the API creates the schema and loads seed data on startup
-(`AUTO_BOOTSTRAP`, on by default for development). To do it explicitly instead:
-
-```bash
-cd backend && python -m app.bootstrap
-```
-
-You do not need a `backend/.env` file. Without one the application uses its
-built-in development defaults and generates a local signing secret in
-`backend/.jwt_secret` (git-ignored). Create `.env` when you want to point at a
-specific database or enable a real AI provider — `backend/.env.example` lists
-every setting.
+How to use each of these: [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md).
 
 ---
 
-## Running the checks
+## Documentation
 
-```bash
-python run.py --check
+| Document | For |
+| --- | --- |
+| [Installation guide](docs/INSTALL.md) | Setting up on macOS, Windows or Linux; PostgreSQL; troubleshooting |
+| [User guide](docs/USER_GUIDE.md) | Members and counsellors, with screenshots |
+| [API reference](docs/API.md) · [OpenAPI](docs/openapi.json) | Every endpoint, request, response and error code |
+| [AI features](docs/AI_FEATURES.md) | The assistant, the recommender, evaluation results, failure handling |
+| [Architecture design](docs/ARCHITECTURE_DESIGN.md) | Components, boundaries, data flows, quality attributes, debt |
+| [Architecture as built](docs/ARCHITECTURE.md) | Generated module graph and implementation notes |
+| [Decision records](docs/adr/README.md) | Why the eight hardest-to-reverse decisions went the way they did |
+| [CI/CD pipeline](docs/CI_CD.md) | The four jobs, what each gates, run evidence |
+| [Code quality metrics](docs/metrics/README.md) | Coverage, complexity, benchmarks, code reviews |
+| [Security](docs/SECURITY.md) | Secrets, access rules, what the shared repository means for keys |
+
+---
+
+## Architecture at a glance
+
+A **modular monolith**: one deployable FastAPI application whose ten
+components communicate only through named entry points, with a React client
+and PostgreSQL. The boundaries are not a convention — sixteen tests parse the
+source and fail the build if a component reaches where it should not, and the
+dependency diagram is generated from the real imports.
+
+```
+React client ──HTTP──▶ API layer ──▶ Conversation Management ──▶ Customer Data Adapter ──▶ Cache
+                          │                    ├──▶ Knowledge Base ──▶ Cache
+                          │                    ├──▶ AI Integration ──▶ provider (mock / Anthropic)
+                          │                    ├──▶ Response Validation
+                          │                    └──▶ Escalation
+                          ├──▶ Pathway recommender (AI Integration) via Customer Data Adapter
+                          ├──▶ Feedback ──▶ outbox ──▶ Learning Analytics Worker
+                          └──▶ Monitoring
 ```
 
-That runs exactly what CI runs. Individually:
+## Quality at a glance
+
+| | |
+| --- | --- |
+| Tests | 236 backend (PostgreSQL 16) · 42 frontend · 11-step end-to-end |
+| Coverage | 94.4% backend lines · 90.3% frontend lines, with floors in CI |
+| Complexity | Mean cyclomatic complexity 2.6; no function above 15; CI limit 15 |
+| Static analysis | 0 findings — ruff, mypy, ESLint, actionlint |
+| Latency | Conversation turn p95 128 ms at 10 concurrent clients (built-in advisor); target 5 s |
+| Recommender | Relevant pathway in the top three for 7 of 7 labelled records |
+
+Details and how each is measured: [`docs/metrics/`](docs/metrics/README.md).
+
+---
+
+## Development
 
 ```bash
-cd backend                         # Windows: .venv\Scripts\Activate.ps1
-ruff check . && ruff format --check . && mypy app && pytest -q
-
-cd ../frontend
-npm run lint && npm test && npm run build
+python run.py --check        # everything CI runs: lint, types, tests, contract, architecture, complexity
+python run.py --reset-db     # start from an empty database
+python run.py --reinstall    # reinstall dependencies from scratch
 ```
 
-End-to-end check against a running instance (macOS, Linux or Git Bash):
-
-```bash
-bash scripts/smoke_test.sh
-```
-
-The asynchronous worker is run on demand:
-
-```bash
-cd backend && python -m app.modules.analytics.worker
-```
+Workflow: branch from `main`, keep `python run.py --check` green, open a pull
+request using the template, and merge once CI passes. Python follows ruff
+formatting at 100 columns; JavaScript uses Allman braces, enforced by ESLint.
+Keep commit messages short. Never commit `backend/.env` or a key.
 
 ## Repository layout
 
 ```
-run.py                   One-command setup and launcher
-start.command            macOS: double-click to run
-start.bat                Windows: double-click to run
+run.py                     One-command setup and launcher (start.command / start.bat)
 backend/
   app/
-    main.py              Application entry point, middleware, startup bootstrap
-    config.py            Environment-driven configuration
-    schemas.py           Request/response contracts (the public interface)
-    errors.py            The shared error contract and status-code mapping
-    security.py          JWT issuance, identity and role checks
-    models.py            SQLAlchemy models, incl. the simulated legacy database
-    bootstrap.py         Schema creation and synthetic seed data
-    api/v1/              Routers: auth, conversations, agent, health
+    main.py                Entry point, middleware, startup and shutdown
+    schemas.py             Request/response contracts — the public interface
+    errors.py              The shared error contract
+    security.py            Token issuance, identity and role checks
+    models.py, bootstrap.py  Data model and synthetic seed data
+    api/v1/                Routers: auth, conversations, agent, pathways, health, ops
     modules/
-      conversation/      Conversation Management Module (orchestrator)
-      customer_data/     Customer Data Adapter (legacy schema translation)
-      knowledge/         Knowledge Base Service
-      ai_integration/    AI Integration Module + provider implementations
-      validation/        Response Validation Module
-      escalation/        Escalation rules and case management
-      feedback/          Feedback Module and event outbox
-      analytics/         Learning Analytics Worker (asynchronous)
-      cache/             Cache interface + in-memory implementation
-      monitoring/        Request, turn and latency counters
-  tests/                 Tests covering the modules and every endpoint
-frontend/
-  src/api/client.js      Single API client; translates the error contract
-  src/pages/             Customer chat, agent dashboard
-  src/components/        Login panel, escalation queue, AI insights, operations
-docs/
-  API.md                       Endpoint reference
-  ARCHITECTURE.md              Component boundaries and data flow (as built)
-  AI_FEATURES.md               The assistant and the pathway recommender
-  SECURITY.md                  Secret handling and access rules
-scripts/smoke_test.sh    End-to-end integration check used by CI
+      conversation/        Conversation Management — the one orchestrator
+      customer_data/       Customer Data Adapter — legacy record translation and minimisation
+      knowledge/           Knowledge Base
+      ai_integration/      Providers, prompt building, retry policy, pathway recommender
+      validation/          Response Validation
+      escalation/          Escalation rules, cases, counsellor replies
+      feedback/            Feedback and event outbox
+      analytics/           Learning Analytics Worker
+      cache/, monitoring/  Supporting components
+  tests/                   236 tests, including contract and architecture tests
+frontend/src/              React client: chat, recommendations, counsellor dashboard
+docs/                      Everything in the documentation table above
+scripts/
+  smoke_test.sh            End-to-end check used by CI
+  benchmark.py             HTTP performance benchmark
+  quality_report.py        Maintainability metrics
+  export_openapi.py        Regenerates docs/openapi.json
+  generate_module_graph.py Regenerates the architecture diagram
+.github/workflows/ci.yml   Backend, frontend, integration and delivery jobs
 ```
 
-## Alpha limitations (deliberate)
+## Known limitations
 
-- The chat assistant runs on the mock provider unless a team member sets their
-  own key; the pathway recommender needs none. See `docs/AI_FEATURES.md`.
-- The cache and the rate-limit counters are process-local. Production moves
-  both to the shared cache so instances stay stateless.
-- Monitoring counters are per-instance and are read through an endpoint rather
-  than exported to a monitoring system. No alerting or tracing.
-- Approving an AI improvement recommendation records the decision but does not
-  apply it; no prompt or routing rule changes as a result.
-- The event queue is a database outbox table rather than a managed queue, and
-  the analytics worker runs on demand rather than on a schedule.
-- Self-service registration is out of scope; accounts are seeded.
-- A counsellor can read an escalated case but cannot yet reply to the member.
-  That path is on the Integration Lead's branch.
-- There is no special handling for a member in distress. A service for veterans
-  would need one before any real use; the Alpha routes such a message through
-  the ordinary rules, which most likely means an unsupported-topic escalation.
-- The 10,000 concurrent-user target has not been load tested. The architecture
-  permits horizontal scaling; the measurement is still outstanding.
+Recorded in full, with consequences, in section 10 of the
+[architecture design](docs/ARCHITECTURE_DESIGN.md#10-known-architectural-debt).
+The ones to know before relying on this:
+
+- The built-in advisor routes on topic rather than understanding free text,
+  so unusual phrasings reach a counsellor instead of being answered. Configure
+  Claude or ChatGPT on the server for wider coverage.
+- The cache and rate-limit counters are per process, so instances are not yet
+  fully stateless; monitoring counters are per instance and not exported.
+- The provider call is synchronous and holds a worker thread for its duration.
+- One instance has been benchmarked. The 10,000 concurrent-user requirement
+  has not been demonstrated.
+- There is no special handling for a member in distress. A service for
+  veterans needs one before any real use.

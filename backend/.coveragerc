@@ -1,0 +1,19 @@
+# Coverage for the backend test suite. CI fails the build below fail_under.
+[run]
+source = app
+branch = True
+
+[report]
+show_missing = True
+skip_empty = True
+fail_under = 90
+exclude_lines =
+    pragma: no cover
+    if __name__ == .__main__.:
+    raise NotImplementedError
+
+[xml]
+output = coverage.xml
+
+[html]
+directory = htmlcov

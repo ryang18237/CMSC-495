@@ -18,5 +18,18 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/setupTests.js'],
+    coverage: {
+      provider: 'v8',
+      include: ['src/**/*.{js,jsx}'],
+      exclude: ['src/**/*.test.{js,jsx}', 'src/main.jsx', 'src/setupTests.js'],
+      reporter: ['text', 'html', 'json-summary'],
+      reportsDirectory: 'coverage',
+      // Floors, not targets. The measured figures are in docs/metrics/COVERAGE.md;
+      // a change that drops below these fails the build.
+      thresholds: {
+        lines: 80,
+        branches: 75,
+      },
+    },
   },
 })
