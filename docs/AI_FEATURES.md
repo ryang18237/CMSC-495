@@ -55,7 +55,7 @@ to contain only `model`, `max_tokens`, `system` and `messages`:
 
 No member name, email, member number or identifier is ever included.
 
-### Three providers, no key required
+### Four providers, no key required
 
 The platform works the moment it is installed. Nobody signs up for anything,
 and **no member is ever asked for an API key** — there is nowhere in the
@@ -64,10 +64,13 @@ interface to enter one, by design.
 | Provider id | Member sees | Needs | Runs |
 | --- | --- | --- | --- |
 | `builtin` | Built-in advisor | nothing | in process, offline |
+| `ollama` | Local model | Ollama installed | on this machine |
 | `anthropic` | Claude | `ANTHROPIC_API_KEY` | Anthropic Messages API |
 | `openai` | ChatGPT | `OPENAI_API_KEY` | OpenAI Chat Completions |
 
-`builtin` is the default and is always available. Claude and ChatGPT are
+The shipped default is `AI_PROVIDER=auto`, which means: a local model if this
+machine can run one, the built-in advisor otherwise. Both are free, keyless
+and private; the difference is that the first is a real language model. Claude and ChatGPT are
 upgrades that **whoever runs the server** configures once, in
 `backend/.env`; every member of that server then benefits without touching a
 key. `GET /api/v1/ai/providers` lists only what the server can actually
@@ -75,6 +78,45 @@ reach, the chat shows a **Model** picker when there is more than one, and each
 message carries a provider **id** — never a credential. A provider without a
 key can never be selected: the API refuses it with
 `422 AI_PROVIDER_UNAVAILABLE`.
+
+### A model on your own machine
+
+This is the recommended way to get real answers, and the only one that is
+simultaneously a language model, free, and free of accounts.
+
+[Ollama](https://ollama.com) runs a model locally and exposes an
+OpenAI-compatible endpoint on port 11434. Install it, then:
+
+```bash
+ollama pull llama3.2
+```
+
+That is the entire setup. Start the platform and it finds the daemon by
+itself — `run.py` prints `Assistant: Local model through Ollama` — because
+`AI_PROVIDER=auto` probes `GET /v1/models` on startup and on each turn. Stop
+Ollama and the next turn falls back to the built-in advisor without an error;
+start it again and answers come from the model again, with no restart.
+
+Any model you have pulled works — name it in `OLLAMA_MODEL`. A model that is
+*not* pulled is reported `degraded` and never offered, because offering one
+would turn every conversation into a 404.
+
+Three properties make this the right default for a service handling veterans'
+service records:
+
+- **No credential exists.** Ollama requires the `Authorization` header and
+  ignores it, so the provider sends a constant. There is no key to leak, to
+  rotate, or to keep out of git.
+- **Nothing leaves the machine.** The minimised facts go to localhost. For a
+  member's branch, specialty, separation date and training history, that is a
+  materially different privacy position from any hosted model.
+- **No cost and no quota.** Which means a demonstration cannot fail because
+  a free tier ran out.
+
+The trade is quality and speed: a 3B model on a laptop is weaker than Claude
+or ChatGPT and slower per token than either. `AI_TIMEOUT_SECONDS` applies
+unchanged, so a model too slow for the budget degrades to a counsellor
+hand-off rather than hanging the conversation.
 
 ### The built-in advisor
 

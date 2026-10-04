@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import os
 import platform
 import shutil
@@ -646,6 +647,47 @@ def free_port(port: int, what: str) -> bool:
     return True
 
 
+def _fetch_json(url: str) -> dict[str, object]:
+    try:
+        with urllib.request.urlopen(url, timeout=3) as response:
+            loaded = json.loads(response.read().decode("utf-8"))
+    except (urllib.error.URLError, OSError, ValueError):
+        return {}
+    return loaded if isinstance(loaded, dict) else {}
+
+
+# How the assistant answers is the thing people most often get wrong about
+# this platform ("why is it giving me the same paragraph?"), so the launcher
+# says which provider the server actually resolved -- read back from
+# /health rather than worked out a second time here, so the two can never
+# disagree -- and, when it is the fallback, how to get a real model.
+_OLLAMA_HINT = (
+    "For answers from a real language model, install Ollama "
+    "(https://ollama.com), then run:  ollama pull {model}"
+)
+
+
+def report_ai_provider(default_model: str = "llama3.2") -> None:
+    dependencies = _fetch_json(f"{API_URL}/api/v1/health").get("dependencies")
+    if not isinstance(dependencies, dict):
+        return
+
+    name = str(dependencies.get("ai_provider_name") or "")
+    labels = {
+        "builtin": "Built-in advisor (no key, keyword-routed)",
+        "ollama": "Local model through Ollama",
+        "anthropic": "Claude",
+        "openai": "ChatGPT",
+    }
+    if not name:
+        return
+
+    info(f"Assistant: {labels.get(name, name)}")
+    if name == "builtin":
+        info(_OLLAMA_HINT.format(model=default_model))
+        info("Nothing else to configure -- it is picked up automatically.")
+
+
 def wait_for(url: str, timeout: int = 60) -> bool:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -753,6 +795,7 @@ def serve(python: Path, env: dict[str, str], label: str, args: argparse.Namespac
             fail("The API did not start. The error should be printed above.")
             return 1
         info(f"API ready at {API_URL} (interactive docs at {API_URL}/docs)")
+        report_ai_provider()
 
         serve_web = not args.api_only and npm is not None
         if args.api_only:

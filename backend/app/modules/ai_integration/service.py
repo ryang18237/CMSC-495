@@ -18,6 +18,7 @@ from app.modules.ai_integration.contracts import (
 from app.modules.ai_integration.providers.anthropic_provider import AnthropicProvider
 from app.modules.ai_integration.providers.base import AIProvider
 from app.modules.ai_integration.providers.builtin import MODEL, BuiltInAdvisor
+from app.modules.ai_integration.providers.ollama_provider import OllamaProvider
 from app.modules.ai_integration.providers.openai_provider import OpenAIProvider
 
 FALLBACK_MESSAGE = (
@@ -61,6 +62,7 @@ def shutdown() -> None:
 # the platform be installed and used with no sign-ups and nothing to configure.
 _PROVIDERS: dict[str, tuple[str, type[AIProvider]]] = {
     "builtin": ("Built-in advisor", BuiltInAdvisor),
+    "ollama": ("Local model", OllamaProvider),
     "anthropic": ("Claude", AnthropicProvider),
     "openai": ("ChatGPT", OpenAIProvider),
 }
@@ -69,10 +71,37 @@ _PROVIDERS: dict[str, tuple[str, type[AIProvider]]] = {
 # files and CI still say it, so it keeps working.
 _ALIASES = {"mock": "builtin", "": "builtin"}
 
+# What "auto" tries, in order. A local model first: it is the only option that
+# is both a real language model and free of keys, accounts and cost, so it is
+# what someone who has configured nothing should get when their machine can
+# run it. The built-in advisor is last because it always works.
+_AUTO_ORDER = ("ollama", "builtin")
+
+AUTO = "auto"
+
 
 def _canonical(name: str) -> str:
     cleaned = name.strip().lower()
     return _ALIASES.get(cleaned, cleaned)
+
+
+def resolve_auto() -> str:
+    """The provider `auto` means on this machine, right now.
+
+    Resolved on each call rather than at import: starting Ollama should be
+    noticed without restarting the platform.
+    """
+    for provider_id in _AUTO_ORDER:
+        _, provider_class = _PROVIDERS[provider_id]
+        if provider_class().health() == "ok":
+            return provider_id
+    return "builtin"
+
+
+def configured_provider() -> str:
+    """The provider configuration asks for, with `auto` already resolved."""
+    configured = _canonical(get_settings().ai_provider)
+    return resolve_auto() if configured == AUTO else configured
 
 
 @dataclass(frozen=True)
@@ -89,7 +118,9 @@ def build_provider(name: str | None = None) -> AIProvider:
     An unknown name falls back to the built-in advisor rather than failing:
     a typo in configuration should degrade the answers, not the platform.
     """
-    selected = _canonical(name or get_settings().ai_provider)
+    selected = _canonical(name) if name else configured_provider()
+    if selected == AUTO:
+        selected = resolve_auto()
     _, provider_class = _PROVIDERS.get(selected, _PROVIDERS["builtin"])
     return provider_class()
 
@@ -99,6 +130,7 @@ def _model_for(provider_id: str) -> str:
     return {
         "anthropic": settings.anthropic_model,
         "openai": settings.openai_model,
+        "ollama": settings.ollama_model,
     }.get(provider_id, MODEL)
 
 
@@ -113,7 +145,7 @@ def available_providers() -> list[ProviderOption]:
         for provider_id, (_, provider_class) in _PROVIDERS.items()
         if provider_class().health() == "ok"
     ]
-    configured = _canonical(get_settings().ai_provider)
+    configured = configured_provider()
     default = configured if configured in ready else "builtin"
     return [
         ProviderOption(

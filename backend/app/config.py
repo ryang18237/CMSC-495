@@ -73,7 +73,10 @@ class Settings(BaseSettings):
     # out of the box. "anthropic" and "openai" are upgrades the operator
     # configures once; a member is never asked for a key. ("mock" is accepted
     # as the old name for "builtin".)
-    ai_provider: str = "builtin"
+    # "auto" picks the best provider this machine can actually use: a local
+    # model if Ollama is running, otherwise the built-in advisor. Naming a
+    # provider explicitly always wins over the guess.
+    ai_provider: str = "auto"
     anthropic_api_key: str = ""
     # A dated model id, so a demonstration is reproducible (peer review).
     anthropic_model: str = "claude-haiku-4-5-20251001"
@@ -82,6 +85,12 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_model: str = "gpt-6-luna"
     openai_base_url: str = "https://api.openai.com"
+    # A model on this machine, through Ollama. No key, no account, no cost,
+    # and no part of a member's record leaves the computer (ADR 0011).
+    ollama_base_url: str = "http://localhost:11434"
+    # Small enough to run on a laptop and to download in a few minutes. Any
+    # model that is pulled locally works; this is only the default.
+    ollama_model: str = "llama3.2"
     # Sized against the ~5 second response target (peer review, High). A
     # retry is only started while the turn is still inside the retry budget,
     # so the worst case is about budget + one timeout (~13 s), not

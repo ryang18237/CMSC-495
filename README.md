@@ -23,8 +23,14 @@ illustrative content rather than guidance from any agency.
 
 ## Quick start
 
-Requires **Python 3.10+** and **Node 18+**. No database to install and no file
-to edit.
+Requires **Python 3.10+** and **Node 18+**. No database to install, no file to
+edit and no API key to obtain.
+
+For answers from a real language model rather than the built-in advisor,
+install [Ollama](https://ollama.com) and run `ollama pull llama3.2` once. The
+platform finds it on its own. There is still no key and nothing to configure,
+and nothing a member enters leaves the machine. Skip it and everything still
+works — see [ADR 0011](docs/adr/0011-a-local-model-is-the-default.md).
 
 ```bash
 git clone https://github.com/ryang18237/CMSC-495.git

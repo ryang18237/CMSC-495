@@ -54,6 +54,13 @@ and the web client on port 5173, and opens the browser.
 | Python | 3.10 or newer | `python3 --version` (Windows: `python --version`) |
 | Node.js | 18 or newer (LTS) | `node --version` |
 | Git | any recent | `git --version` |
+| Ollama | optional | `ollama --version` |
+
+Ollama is the only optional one. Without it the assistant uses the built-in
+advisor; with it, answers come from a real language model running on this
+machine, with no key and no account. Install from <https://ollama.com>, then
+`ollama pull llama3.2`. `run.py` prints which of the two is in use at
+startup.
 
 ### macOS
 
