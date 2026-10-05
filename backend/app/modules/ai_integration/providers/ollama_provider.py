@@ -62,6 +62,19 @@ class OllamaProvider(OpenAIProvider):
         self._api_key = PLACEHOLDER_KEY
         self._model = settings.ollama_model
         self._base_url = settings.ollama_base_url.rstrip("/")
+        self._timeout = settings.ollama_timeout_seconds
+
+    @property
+    def retry_budget_seconds(self) -> float:
+        """Never retry. A slow answer is not a transient failure.
+
+        The failures a retry exists to paper over -- a dropped connection, a
+        429, a 503 -- barely happen against localhost. What does happen is
+        that generation takes longer than the timeout, and retrying that only
+        makes the member wait for a second long answer before being handed to
+        a counsellor anyway.
+        """
+        return 0.0
 
     def health(self) -> str:
         """'ok' only when the daemon is up and the model is pulled."""

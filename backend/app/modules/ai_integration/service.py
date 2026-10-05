@@ -4,6 +4,7 @@ Owns prompt construction, the retry policy and the fallback path. The rest of
 the application talks to this service and never to a provider directly.
 """
 
+import logging
 import time
 from dataclasses import dataclass
 
@@ -20,6 +21,8 @@ from app.modules.ai_integration.providers.base import AIProvider
 from app.modules.ai_integration.providers.builtin import MODEL, BuiltInAdvisor
 from app.modules.ai_integration.providers.ollama_provider import OllamaProvider
 from app.modules.ai_integration.providers.openai_provider import OpenAIProvider
+
+logger = logging.getLogger("app.ai")
 
 FALLBACK_MESSAGE = (
     "I'm sorry -- I can't reach the assistant service right now, and I'd rather not "
@@ -213,7 +216,7 @@ class AIIntegrationService:
                     break
                 # A retry that starts after the budget can only finish after the
                 # member has already waited too long. Hand them to a person now.
-                if time.monotonic() - started >= settings.ai_retry_budget_seconds:
+                if time.monotonic() - started >= self._provider.retry_budget_seconds:
                     break
                 time.sleep(min(0.2 * (2**attempt), 1.0))
                 continue
@@ -252,11 +255,19 @@ class AIIntegrationService:
         that quoted a response excerpt would write member data into the log, so
         the length is capped here where every provider passes through.
         """
+        detail = str(error)[:ERROR_DETAIL_LIMIT]
+        # The member is told only that a person will pick it up. Whoever runs
+        # the server needs the actual reason, and until now it was recorded on
+        # the result and then dropped -- which made "assistant service
+        # unavailable" impossible to diagnose from the logs.
+        logger.warning(
+            "ai provider %s failed after %dms: %s", self._provider.name, latency_ms, detail
+        )
         return AIResult(
             outcome=AIOutcome.PROVIDER_FAILURE,
             text=FALLBACK_MESSAGE,
             model=self._provider.name,
             sources=[],
             latency_ms=latency_ms,
-            error_detail=str(error)[:ERROR_DETAIL_LIMIT],
+            error_detail=detail,
         )

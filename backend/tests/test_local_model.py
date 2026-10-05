@@ -234,3 +234,76 @@ def test_a_real_request_reaches_a_real_server(stub_ollama):
     assert "Security+" in reply.text
     assert "facts received: True" in reply.text
     assert reply.stop_reason == "stop"
+
+
+# ---------------------------------------------------------------------------
+# Latency: the failure that looked like "the service is down"
+# ---------------------------------------------------------------------------
+def test_a_local_model_gets_a_timeout_it_can_actually_meet():
+    """8 seconds is a network budget. Loading weights off disk is not network.
+
+    The shipped default failed essentially every real local request, and the
+    member saw "assistant service unavailable" -- indistinguishable, from the
+    chat, from the platform being broken.
+    """
+    settings = get_settings()
+    provider = OllamaProvider()
+
+    assert provider._timeout == settings.ollama_timeout_seconds
+    assert provider._timeout >= 60, "a cold local model routinely needs a minute"
+    assert settings.ai_timeout_seconds < provider._timeout
+
+
+def test_a_slow_local_model_is_not_retried():
+    """Retrying a slow answer just makes the member wait for two of them."""
+    assert OllamaProvider().retry_budget_seconds == 0.0
+
+
+def test_a_hosted_provider_keeps_its_retry_budget():
+    """The change is local-only: nothing about hosted retry behaviour moves."""
+    from app.modules.ai_integration.providers.builtin import BuiltInAdvisor
+
+    assert BuiltInAdvisor().retry_budget_seconds == get_settings().ai_retry_budget_seconds
+
+
+def test_one_slow_turn_is_answered_rather_than_escalated(monkeypatch):
+    """End to end: a model that takes longer than the old budget still answers."""
+    from app.modules.ai_integration.contracts import ChatContext
+    from app.modules.ai_integration.service import AIIntegrationService
+
+    slow = 0.3
+    monkeypatch.setattr(get_settings(), "ai_timeout_seconds", 0.05)
+    monkeypatch.setattr(get_settings(), "ollama_timeout_seconds", 5.0)
+
+    def handler(request):
+        import time as _time
+
+        _time.sleep(slow)
+        return httpx.Response(200, json=_answer_body("Network+ next."))
+
+    provider = _provider(handler)
+    result = AIIntegrationService(provider).generate_response(
+        ChatContext(
+            conversation_id="c1",
+            inquiry_type="CREDENTIAL",
+            customer_message="what next?",
+        )
+    )
+
+    assert result.outcome.name == "ANSWERED", result.error_detail
+    assert "Network+" in result.text
+
+
+def test_a_provider_failure_is_written_to_the_log(caplog):
+    """It was recorded on the result and then dropped, so nothing could be diagnosed."""
+    from app.modules.ai_integration.contracts import AIProviderError
+    from app.modules.ai_integration.service import AIIntegrationService
+
+    with caplog.at_level("WARNING", logger="app.ai"):
+        AIIntegrationService(OllamaProvider()).handle_provider_failure(
+            AIProviderError("Provider did not respond within 120s.", retryable=True),
+            latency_ms=120_000,
+        )
+
+    assert "ollama" in caplog.text
+    assert "did not respond within 120s" in caplog.text

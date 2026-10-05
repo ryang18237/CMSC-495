@@ -91,6 +91,12 @@ class Settings(BaseSettings):
     # Small enough to run on a laptop and to download in a few minutes. Any
     # model that is pulled locally works; this is only the default.
     ollama_model: str = "llama3.2"
+    # A local model is slow in a way a hosted one is not: the first call after
+    # startup loads several gigabytes of weights off disk, and generation runs
+    # on the CPU unless the machine has a GPU. Eight seconds -- a sensible
+    # ceiling for an API call over the network -- fails essentially every
+    # local request, which looks to a member like the service being down.
+    ollama_timeout_seconds: float = 120.0
     # Sized against the ~5 second response target (peer review, High). A
     # retry is only started while the turn is still inside the retry budget,
     # so the worst case is about budget + one timeout (~13 s), not
