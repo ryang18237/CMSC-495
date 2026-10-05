@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.bootstrap import CUSTOMER_ID
 from app.config import get_settings
+from app.models import LegacyMemberMaster
 from app.modules.ai_integration.contracts import (
     AIOutcome,
     AIProviderError,
@@ -33,8 +34,29 @@ from app.schemas import EscalationReason
 # ---------------------------------------------------------------------------
 # Customer Data Adapter
 # ---------------------------------------------------------------------------
+def _legacy_history(db_session: Session, training: str, credentials: str) -> None:
+    """Write the legacy columns directly.
+
+    The seed leaves them empty on purpose -- a member starts with nothing on
+    their profile and adds what they have -- but the adapter still has to cope
+    with a personnel feed that does supply them, which is what these tests are
+    about. So the test writes the row it needs rather than relying on seed
+    data that exists for a different reason.
+    """
+    record = db_session.get(LegacyMemberMaster, "MBR-100241")
+    assert record is not None
+    record.cmpltd_trng_txt = training
+    record.cred_erned_txt = credentials
+    db_session.flush()
+
+
 def test_adapter_translates_legacy_codes(db_session: Session) -> None:
     """Codes in, readable values out. The raw codes must not escape the adapter."""
+    _legacy_history(
+        db_session,
+        "Basic Leader Course;Network Administration Course",
+        "CompTIA A+",
+    )
     context = CustomerDataAdapter(db_session).get_customer_context(CUSTOMER_ID)
 
     assert context.customer_ref == "MBR-100241"
@@ -46,8 +68,19 @@ def test_adapter_translates_legacy_codes(db_session: Session) -> None:
     assert context.credentials == ["CompTIA A+"]
 
 
+def test_a_seeded_member_carries_no_history(db_session: Session) -> None:
+    """Nothing is claimed on a member's behalf by the personnel feed."""
+    context = CustomerDataAdapter(db_session).get_customer_context(CUSTOMER_ID)
+
+    assert context.completed_training == []
+    assert context.credentials == []
+    # The posting itself is still a fact about them, and stays.
+    assert context.service_branch == "Army"
+
+
 def test_adapter_minimises_fields_by_inquiry_type(db_session: Session) -> None:
     """A question about timing must not carry the member's training record."""
+    _legacy_history(db_session, "Network Administration Course", "CompTIA A+")
     adapter = CustomerDataAdapter(db_session)
 
     transition = adapter.get_relevant_account_data(CUSTOMER_ID, "TRANSITION")

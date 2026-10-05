@@ -232,9 +232,10 @@ def test_most_of_the_top_three_is_relevant() -> None:
 # HTTP route
 # ---------------------------------------------------------------------------
 def test_member_gets_recommendations_from_their_own_record(
-    client: TestClient, customer_auth: dict[str, str]
+    client: TestClient, member_with_history: dict[str, str]
 ) -> None:
-    response = client.get("/api/v1/pathways/recommended", headers=customer_auth)
+    """Ranked against what the member entered, now that nothing is seeded."""
+    response = client.get("/api/v1/pathways/recommended", headers=member_with_history)
     assert response.status_code == 200
     body = response.json()
 
@@ -257,7 +258,8 @@ def test_two_members_get_different_suggestions(
     assert first_it not in {item["pathwayId"] for item in corpsman["recommendations"]}
 
 
-def test_limit_is_validated(client: TestClient, customer_auth: dict[str, str]) -> None:
+def test_limit_is_validated(client: TestClient, member_with_history: dict[str, str]) -> None:
+    customer_auth = member_with_history
     ok = client.get("/api/v1/pathways/recommended?limit=2", headers=customer_auth)
     assert len(ok.json()["recommendations"]) == 2
 

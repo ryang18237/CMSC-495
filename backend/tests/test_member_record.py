@@ -18,12 +18,18 @@ def _b64(text: str) -> str:
 # ---------------------------------------------------------------------------
 # Reading and editing
 # ---------------------------------------------------------------------------
-def test_record_shows_the_service_record_and_nothing_added_yet(
+def test_a_new_member_starts_with_an_empty_profile(
     client: TestClient, customer_auth: dict[str, str]
 ) -> None:
+    """Nothing is claimed on a member's behalf.
+
+    The personnel feed is read-only here, so anything it supplied was training
+    and credentials a member could see and could not remove. They now start
+    empty and add what they have.
+    """
     body = client.get(RECORD, headers=customer_auth).json()
-    assert body["serviceRecord"]["credentials"] == ["CompTIA A+"]
-    assert "Network Administration Course" in body["serviceRecord"]["completedTraining"]
+    assert body["serviceRecord"]["credentials"] == []
+    assert body["serviceRecord"]["completedTraining"] == []
     assert body["added"] == []
 
 
@@ -141,8 +147,9 @@ def test_record_is_member_only(client: TestClient, agent_auth: dict[str, str]) -
 # The point of the feature: saved once, used in every conversation
 # ---------------------------------------------------------------------------
 def test_added_items_reach_every_new_conversation(
-    client: TestClient, customer_auth: dict[str, str], monkeypatch
+    client: TestClient, member_with_history: dict[str, str], monkeypatch
 ) -> None:
+    customer_auth = member_with_history
     from app.modules.ai_integration import service as ai_service
 
     seen_prompts: list[str] = []
@@ -181,7 +188,7 @@ def test_added_items_reach_every_new_conversation(
             json={"message": "Which certification should I work toward next?"},
         )
         assert "CompTIA Security+" in seen_prompts[-1]
-        # Merged with, not replacing, the service record.
+        # Added to what was already there, not replacing it.
         assert "CompTIA A+" in seen_prompts[-1]
 
 

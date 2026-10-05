@@ -95,31 +95,17 @@ KNOWLEDGE_ARTICLES: list[tuple[str, str, str]] = [
 # Synthetic personnel records, in the shape the legacy system stores them.
 # Columns: member number, user id, branch, pay grade, specialty, years served,
 # days until separation, completed training, credentials held, open cases.
+#
+# Training and credentials are deliberately empty. The personnel feed is
+# read-only in this platform, so anything seeded there is something a member
+# can see on their profile and cannot remove -- which is confusing when the
+# rest of the profile is theirs to edit, and wrong for a demonstration where
+# the point is to build a profile up from nothing. A member starts empty and
+# adds what they have; the service, pay grade and separation date stay,
+# because those are facts about the posting rather than claims about them.
 _MEMBER_RECORDS = [
-    (
-        "MBR-100241",
-        MEMBER_ID,
-        "ARMY",
-        "E5",
-        "25B",
-        6,
-        120,
-        "Basic Leader Course;Network Administration Course;Information Assurance Fundamentals",
-        "CompTIA A+",
-        1,
-    ),
-    (
-        "MBR-100987",
-        MEMBER_TWO_ID,
-        "USN",
-        "E6",
-        "HM",
-        9,
-        300,
-        "Hospital Corpsman A School;Emergency Medical Technician Course;Instructor Training",
-        "EMT-Basic",
-        0,
-    ),
+    ("MBR-100241", MEMBER_ID, "ARMY", "E5", "25B", 6, 120, "", "", 1),
+    ("MBR-100987", MEMBER_TWO_ID, "USN", "E6", "HM", 9, 300, "", "", 0),
 ]
 
 

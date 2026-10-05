@@ -482,6 +482,13 @@ button.link:hover:not(:disabled) { color: #8ab0f5; }
 .record-list.official li { color: var(--muted); background: transparent; padding-left: 0; }
 .record-list .muted { margin: 0; }
 .record-empty { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
+.record-add-here {
+  margin-top: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  font-size: 13px;
+  border-style: dashed;
+}
 
 /* Add a line: type, name, where, button. */
 .record-add {
@@ -532,6 +539,9 @@ button.link:hover:not(:disabled) { color: #8ab0f5; }
 .record-import[open] > summary::before { content: '- '; }
 .record-import > summary:hover { color: var(--accent); }
 .record-upload { display: grid; gap: 6px; font-size: 13px; }
+/* The file label is a note under the summary, not a heading above a field,
+   so it should not out-weigh the summary that reveals it. */
+.record-upload > label { font-weight: 400; margin: 0; }
 
 .record-review { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px; }
 .record-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }

@@ -115,3 +115,27 @@ def conversation_id(client: TestClient, customer_auth: dict[str, str]) -> str:
     response = client.post("/api/v1/conversations", headers=customer_auth)
     assert response.status_code == 201, response.text
     return str(response.json()["conversationId"])
+
+
+# The personnel feed no longer seeds training or credentials: a member starts
+# with an empty profile and builds it up (see bootstrap._MEMBER_RECORDS). Tests
+# that need somebody with a history therefore have to create one, the same way
+# a member would -- which is also a more honest test than relying on fixture
+# data nobody can edit.
+SEEDED_HISTORY = [
+    {"kind": "CREDENTIAL", "name": "CompTIA A+"},
+    {"kind": "TRAINING", "name": "Basic Leader Course"},
+    {"kind": "TRAINING", "name": "Network Administration Course"},
+    {"kind": "TRAINING", "name": "Information Assurance Fundamentals"},
+]
+
+
+@pytest.fixture
+def member_with_history(client: TestClient, customer_auth: dict[str, str]) -> dict[str, str]:
+    """A member whose profile holds the history the older fixtures assumed."""
+    client.post(
+        "/api/v1/profile/record/items/bulk",
+        headers=customer_auth,
+        json={"items": SEEDED_HISTORY},
+    )
+    return customer_auth

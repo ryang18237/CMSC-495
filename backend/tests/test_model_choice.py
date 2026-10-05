@@ -222,6 +222,27 @@ def test_without_a_choice_the_default_answers(client: TestClient, customer_auth)
 # ---------------------------------------------------------------------------
 # The demo assistant answers from the member's own record
 # ---------------------------------------------------------------------------
+# Members no longer arrive with a history: the personnel feed supplies the
+# posting, and the member supplies what they have done. A test about two
+# different people therefore has to make them different.
+ARMY_IT_HISTORY = [
+    {"kind": "CREDENTIAL", "name": "CompTIA A+"},
+    {"kind": "TRAINING", "name": "Network Administration Course"},
+    {"kind": "TRAINING", "name": "Information Assurance Fundamentals"},
+]
+
+NAVY_MEDICAL_HISTORY = [
+    {"kind": "CREDENTIAL", "name": "EMT-Basic"},
+    {"kind": "TRAINING", "name": "Hospital Corpsman A School"},
+    {"kind": "TRAINING", "name": "Field Medical Service Technician"},
+]
+
+
+def give_profile(client, auth, items):
+    response = client.post("/api/v1/profile/record/items/bulk", headers=auth, json={"items": items})
+    assert response.status_code in (200, 201), response.text
+
+
 def _ask(client, auth, question="Which certification should I work toward next?"):
     conversation = _conversation(client, auth)
     return client.post(
@@ -230,6 +251,9 @@ def _ask(client, auth, question="Which certification should I work toward next?"
 
 
 def test_two_members_get_different_answers(client: TestClient, customer_auth, other_customer_auth):
+    give_profile(client, customer_auth, ARMY_IT_HISTORY)
+    give_profile(client, other_customer_auth, NAVY_MEDICAL_HISTORY)
+
     it_member = _ask(client, customer_auth)
     corpsman = _ask(client, other_customer_auth)
 
@@ -321,8 +345,9 @@ def test_service_reports_which_provider_is_in_use():
 # The built-in advisor: usable with no key at all
 # ---------------------------------------------------------------------------
 @pytest.mark.usefixtures("no_keys")
-def test_the_platform_answers_with_no_keys_configured(client: TestClient, customer_auth):
+def test_the_platform_answers_with_no_keys_configured(client: TestClient, member_with_history):
     """The whole point: install it, sign in, get a personal answer. No setup."""
+    customer_auth = member_with_history
     conversation = _conversation(client, customer_auth)
     reply = client.post(
         f"/api/v1/conversations/{conversation}/messages",
@@ -336,7 +361,8 @@ def test_the_platform_answers_with_no_keys_configured(client: TestClient, custom
 
 
 @pytest.mark.usefixtures("no_keys")
-def test_the_advisor_uses_education_and_experience(client: TestClient, customer_auth):
+def test_the_advisor_uses_education_and_experience(client: TestClient, member_with_history):
+    customer_auth = member_with_history
     for item in (
         {"kind": "EDUCATION", "name": "Associate of Applied Science", "organization": "CTC"},
         {"kind": "EXPERIENCE", "name": "Help Desk Technician", "organization": "Fort Hood"},
@@ -381,3 +407,66 @@ def test_the_old_mock_name_still_selects_the_advisor():
     """Existing .env files and CI config say AI_PROVIDER=mock."""
     assert isinstance(build_provider("mock"), BuiltInAdvisor)
     assert is_available("mock")
+
+
+@pytest.mark.usefixtures("no_keys")
+def test_an_empty_profile_is_asked_for_rather_than_guessed_about(client: TestClient, customer_auth):
+    """A new member has nothing on file. Say so and ask, do not improvise."""
+    conversation = _conversation(client, customer_auth)
+    reply = client.post(
+        f"/api/v1/conversations/{conversation}/messages",
+        headers=customer_auth,
+        json={"message": "Given my background what should I do next?"},
+    ).json()
+
+    assert reply["status"] == "ANSWERED"
+    assert "My profile" in reply["response"]
+    assert reply.get("escalationReason") is None
+
+
+@pytest.mark.usefixtures("no_keys")
+def test_the_answer_changes_as_soon_as_there_is_something_to_go_on(
+    client: TestClient, customer_auth
+):
+    """One entry is enough to stop asking and start advising."""
+    before = _ask(client, customer_auth)
+    assert "My profile" in before
+
+    give_profile(client, customer_auth, [{"kind": "CREDENTIAL", "name": "CompTIA A+"}])
+    after = _ask(client, customer_auth)
+
+    assert "My profile" not in after
+    assert "CompTIA A+" in after
+
+
+@pytest.mark.usefixtures("no_keys")
+def test_an_empty_profile_does_not_make_everything_answerable(client: TestClient, customer_auth):
+    """Asking for the member's details is not a licence to answer anything."""
+    conversation = _conversation(client, customer_auth)
+    reply = client.post(
+        f"/api/v1/conversations/{conversation}/messages",
+        headers=customer_auth,
+        json={"message": "What is the capital of France?"},
+    ).json()
+
+    assert reply["escalationReason"] == "UNSUPPORTED_TOPIC"
+
+
+@pytest.mark.usefixtures("no_keys")
+def test_background_as_context_is_not_a_question_about_the_profile(
+    client: TestClient, customer_auth
+):
+    """ "Given my background, what next?" wants advice, not a list read back."""
+    give_profile(client, customer_auth, ARMY_IT_HISTORY)
+    answer = _ask(client, customer_auth, "Given my background what should I do next?")
+
+    assert "Your profile currently lists" not in answer
+    assert "next step" in answer.lower() or "closest" in answer.lower()
+
+
+@pytest.mark.usefixtures("no_keys")
+def test_asking_what_is_on_file_still_reads_the_profile_back(client: TestClient, customer_auth):
+    give_profile(client, customer_auth, ARMY_IT_HISTORY)
+    answer = _ask(client, customer_auth, "What do you have on file for me?")
+
+    assert "Your profile currently lists" in answer
