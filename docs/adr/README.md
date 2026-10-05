@@ -33,3 +33,4 @@ deleting it hides the reasoning.
 | [0009](0009-usable-without-a-key.md) | The platform is fully usable with no API key | Accepted |
 | [0010](0010-a-plan-is-not-a-record.md) | A development plan is a separate kind, not a flag | Accepted |
 | [0011](0011-a-local-model-is-the-default.md) | A local model is the default, not a hosted one | Accepted |
+| [0012](0012-a-profile-starts-empty.md) | A profile starts empty | Accepted |

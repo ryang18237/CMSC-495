@@ -56,11 +56,13 @@ and the web client on port 5173, and opens the browser.
 | Git | any recent | `git --version` |
 | Ollama | optional | `ollama --version` |
 
-Ollama is the only optional one. Without it the assistant uses the built-in
-advisor; with it, answers come from a real language model running on this
-machine, with no key and no account. Install from <https://ollama.com>, then
-`ollama pull llama3.2`. `run.py` prints which of the two is in use at
-startup.
+Ollama is the only optional one, and the only one `run.py` will install for
+you: on startup it offers to install Ollama if it is absent, starts the daemon
+if it is present but stopped, and pulls `llama3.2` if it has never been
+pulled. Answer no, or pass `--no-local-model`, and the built-in advisor
+answers instead. `run.py` prints which of the two is in use at startup. To
+install Ollama yourself instead, take it from <https://ollama.com> and run
+`ollama pull llama3.2`.
 
 ### macOS
 

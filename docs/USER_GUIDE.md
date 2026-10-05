@@ -68,18 +68,27 @@ a job, a place or funding. It will point you to a counsellor for those.
 
 ### Choosing the AI model
 
-You never need an API key, an account or any setup — the **built-in advisor**
-answers out of the box, using your profile, and costs nothing.
+You never need an API key, an account or any setup, and there is nowhere to
+enter one.
 
-If whoever runs your copy has added Claude or ChatGPT, a **Model** menu
-appears at the top of the chat and you can pick between them. Your choice
-applies to each message, and every answer says which model wrote it. You are
-never asked for a key: there is nowhere to enter one.
+**A real language model, set up for you.** The first time you start the
+platform it looks for [Ollama](https://ollama.com), which runs a language
+model on this computer. If it is missing, it asks once whether to install it;
+if it is installed but not running, it starts it; if the model has never been
+downloaded, it downloads it — about 2 GB, once. Nothing you type leaves the
+machine, and there is no account, key or bill. Answer no and the platform
+starts anyway on the built-in advisor. To skip the question entirely, run
+`python run.py --no-local-model`.
 
-The built-in advisor is deliberately narrow. It handles the questions this
-service is for — what to study or certify next, degree or credential, how to
-describe your background on a resume, what is on your profile. Anything else
-it hands to a counsellor rather than guessing.
+**The built-in advisor** is the fallback, and it needs nothing at all. It is
+deliberately narrow: it handles the questions this service is for — what to
+study or certify next, degree or credential, how to describe your background
+on a resume, what is on your profile — and hands anything else to a counsellor
+rather than guessing.
+
+Whichever is answering, the line under each reply says so. If whoever runs
+your copy has also added Claude or ChatGPT, a **Model** menu appears at the top
+of the chat and you can pick between them per message.
 
 ### My profile
 
@@ -89,9 +98,15 @@ it hands to a counsellor rather than guessing.
 everything the assistant knows about you, so you never have to repeat it in a
 new conversation.
 
-- **From your service record** is what the personnel system holds — military
-  training only. You can't edit it here.
-- Everything else you enter yourself, in four kinds:
+**Your profile starts empty.** Nothing is filled in for you, because a
+record you did not enter and cannot remove is worse than no record at all.
+Three or four entries is enough for the assistant to answer about you rather
+than in general.
+
+- **From your service record** is what the personnel system holds. You can't
+  edit it here, so the card only appears when the personnel system actually
+  sent something.
+- Everything else you enter yourself, in five kinds:
 
   | Kind | What goes in it |
   | --- | --- |
@@ -101,11 +116,12 @@ new conversation.
   | **Experience** | A job or role, military or civilian |
   | **Training** | A course or school the service record missed |
 
-  Choose the kind, type the name, optionally add the issuer, school or
-  employer, and click **Add**. **Remove**, beside every item you added, takes
-  it off again — there is nothing you cannot undo. Only the service record is
-  fixed, because it comes from the personnel system rather than from you.
-  Each kind has its own card, and an empty one says what belongs in it.
+  Each kind has its own card, with a **+ Add** button on it — click the one
+  on the card you want and the form below is already set to that kind, so you
+  type the name, optionally add the issuer, school or employer, and click
+  **Add**. **Remove**, beside every item you added, takes it off again — there
+  is nothing you cannot undo. Only the service record is fixed, because it
+  comes from the personnel system rather than from you.
 - **Have a resume or transcript? Import it instead** is a shortcut if you have
   a long record. Open it, pick a `.txt`, `.csv` or `.pdf`, and everything it
   recognised comes back sorted into those four kinds. Untick anything wrong
@@ -118,6 +134,9 @@ new conversation.
 Changes take effect straight away: the next answer and the recommended next
 steps both use them. You can also just ask the assistant *"what do you have on
 file for me?"* to hear it back.
+
+Ask for advice before you have entered anything and the assistant says so and
+asks for the few entries it needs, rather than inventing a background for you.
 
 ### Your development plan
 

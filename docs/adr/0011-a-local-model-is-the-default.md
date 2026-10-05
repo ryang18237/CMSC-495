@@ -34,11 +34,21 @@ Readiness requires the model to be *installed*, not merely the daemon to be
 *up*. A provider offered without its model would 404 every turn, which is a
 worse failure than not being offered.
 
+`run.py` performs the setup rather than printing it. Before the API starts it
+finds Ollama, starts the daemon if it is installed but stopped, and pulls the
+model if it has never been pulled. A default that requires reading two lines
+of output and running a command is not a default; most people would have read
+the fallback paragraph instead and concluded the assistant was a canned
+response generator. Installing software is the one step it asks about first,
+because that is a decision about someone's computer rather than about this
+project — a declined install, a missing network or an unattended run all fall
+back to the built-in advisor and start the platform anyway.
+
 ## Consequences
 
-Someone who clones the repository gets a real language model after one
-install and one `ollama pull`, with no account, no key and no cost, and the
-facts from their service record never leave the machine. Someone who installs
+Someone who clones the repository gets a real language model by answering one
+question, with no account, no key and no cost, and the facts from their
+service record never leave the machine. Someone who installs
 nothing still gets a working platform. Neither path has a credential in it.
 
 CI keeps using `builtin`, which is deterministic and needs no daemon, so the

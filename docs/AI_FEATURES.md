@@ -85,14 +85,16 @@ This is the recommended way to get real answers, and the only one that is
 simultaneously a language model, free, and free of accounts.
 
 [Ollama](https://ollama.com) runs a model locally and exposes an
-OpenAI-compatible endpoint on port 11434. Install it, then:
+OpenAI-compatible endpoint on port 11434.
 
-```bash
-ollama pull llama3.2
-```
+There is nothing to do: `run.py` offers to install Ollama if it is missing,
+starts the daemon if it is stopped, and runs `ollama pull llama3.2` if the
+model has never been pulled, before the API comes up. `--no-local-model` skips
+all of it; `--install-local-model` installs without asking, for an unattended
+setup. Doing it by hand — `ollama pull llama3.2` — works exactly the same,
+because the launcher only does what a person would have done.
 
-That is the entire setup. Start the platform and it finds the daemon by
-itself — `run.py` prints `Assistant: Local model through Ollama` — because
+Either way the platform finds the daemon by itself — `run.py` prints `Assistant: Local model through Ollama` — because
 `AI_PROVIDER=auto` probes `GET /v1/models` on startup and on each turn. Stop
 Ollama and the next turn falls back to the built-in advisor without an error;
 start it again and answers come from the model again, with no restart.

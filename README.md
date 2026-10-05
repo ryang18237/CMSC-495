@@ -26,11 +26,13 @@ illustrative content rather than guidance from any agency.
 Requires **Python 3.10+** and **Node 18+**. No database to install, no file to
 edit and no API key to obtain.
 
-For answers from a real language model rather than the built-in advisor,
-install [Ollama](https://ollama.com) and run `ollama pull llama3.2` once. The
-platform finds it on its own. There is still no key and nothing to configure,
-and nothing a member enters leaves the machine. Skip it and everything still
-works — see [ADR 0011](docs/adr/0011-a-local-model-is-the-default.md).
+Answers come from a real language model, and the launcher sets that up for
+you: it looks for [Ollama](https://ollama.com), asks once before installing
+it, starts it if it is already there, and pulls `llama3.2` the first time —
+about 2 GB, once. There is no key, no account and nothing to configure, and
+nothing a member enters leaves the machine. Decline, or pass
+`--no-local-model`, and the built-in advisor answers instead and everything
+still works — see [ADR 0011](docs/adr/0011-a-local-model-is-the-default.md).
 
 ```bash
 git clone https://github.com/ryang18237/CMSC-495.git
