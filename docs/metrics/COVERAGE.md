@@ -8,7 +8,7 @@ uploads the full HTML reports as the `backend-coverage` and
 
 | Suite | Tests | Lines | Branches | Floor enforced in CI |
 | --- | ---: | ---: | ---: | --- |
-| Backend — pytest against PostgreSQL 16 | 285 | **94.6%** | **84.0%** | 90% combined (`.coveragerc`) |
+| Backend — pytest against PostgreSQL 16 | 286 | **94.6%** | **84.0%** | 90% combined (`.coveragerc`) |
 | Frontend — Vitest + Testing Library | 43 | **89.7%** | **85.4%** | 80% lines, 75% branches (`vite.config.js`) |
 | End-to-end — `scripts/smoke_test.sh` | 11 steps | — | — | Must pass |
 

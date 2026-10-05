@@ -5,8 +5,10 @@ experience once, and every conversation after that uses them.
 import base64
 
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
-from app.modules.customer_data.member_record import extract_candidates
+from app.bootstrap import MEMBER_ID, _seed_profile_for, seed
+from app.modules.customer_data.member_record import MemberRecordService, extract_candidates
 
 RECORD = "/api/v1/profile/record"
 
@@ -18,19 +20,30 @@ def _b64(text: str) -> str:
 # ---------------------------------------------------------------------------
 # Reading and editing
 # ---------------------------------------------------------------------------
-def test_a_new_member_starts_with_an_empty_profile(
-    client: TestClient, customer_auth: dict[str, str]
+def test_nothing_on_a_profile_is_beyond_the_members_reach(
+    client: TestClient, customer_auth: dict[str, str], db_session: Session
 ) -> None:
-    """Nothing is claimed on a member's behalf.
+    """Every line on a profile is one the member can remove.
 
-    The personnel feed is read-only here, so anything it supplied was training
-    and credentials a member could see and could not remove. They now start
-    empty and add what they have.
+    The personnel feed is read-only here, so anything seeded into it was
+    training and credentials a member could see and could not delete. The feed
+    now supplies nothing, and the demo profile is seeded as the member's own
+    entries instead -- populated to open with, and theirs to change.
     """
+    _seed_profile_for(db_session, MEMBER_ID)
+    db_session.commit()
+
     body = client.get(RECORD, headers=customer_auth).json()
+
     assert body["serviceRecord"]["credentials"] == []
     assert body["serviceRecord"]["completedTraining"] == []
-    assert body["added"] == []
+    assert body["added"], "the demo member should open with something to work from"
+
+    for item in body["added"]:
+        removed = client.delete(f"{RECORD}/items/{item['itemId']}", headers=customer_auth)
+        assert removed.status_code in (200, 204), item
+
+    assert client.get(RECORD, headers=customer_auth).json()["added"] == []
 
 
 def test_profile_reports_how_complete_it_is(
@@ -458,3 +471,32 @@ def test_a_plan_is_never_sent_to_the_provider(client: TestClient, customer_auth)
     ).json()
 
     assert goal["name"] not in answer["response"]
+
+
+def test_a_new_account_is_given_a_profile_it_owns(db_session: Session) -> None:
+    """A demo profile is only useful if it behaves like one the member built.
+
+    These lines used to be seeded into the legacy personnel record, where they
+    rendered under "From your service record" with no Remove button. Seeding
+    them as the member's own entries keeps the opening screen populated while
+    leaving every line theirs to delete.
+    """
+    _seed_profile_for(db_session, MEMBER_ID)
+    db_session.flush()
+
+    service = MemberRecordService(db_session)
+    items = service.list_items(MEMBER_ID)
+
+    assert items, "the demo member should open with a profile to work from"
+    assert {item.kind for item in items} >= {"CREDENTIAL", "TRAINING", "EXPERIENCE"}
+
+    # Every one is the member's: removable, and gone for good.
+    for item in items:
+        service.remove(MEMBER_ID, item.id)
+    assert service.list_items(MEMBER_ID) == []
+
+    # Re-running the seed does not resurrect what the member deleted, because
+    # the profile is seeded when the account is created, not whenever it looks
+    # empty. The accounts already exist here, so this is a no-op.
+    seed(db_session)
+    assert service.list_items(MEMBER_ID) == []

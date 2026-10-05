@@ -1,4 +1,4 @@
-# 0012 — A profile starts empty
+# 0012 — Nothing on a profile is beyond the member's reach
 
 **Status:** Accepted
 **Date:** Final release
@@ -32,6 +32,20 @@ separation date — facts about a posting — and seeds no training and no
 credentials. The **From your service record** card is hidden entirely when
 the feed returns nothing, rather than shown empty.
 
+**Amended after use.** Starting from nothing was the right fix for the
+unremovable record and the wrong default for everything else: there was
+nothing to recommend from on the first screen, and a demonstration needed a
+minute of typing before it showed anything. The demo accounts are now seeded
+with a starting profile again — but through `_seed_profile_for`, as the
+member's *own* entries, each with a Remove button. The rule this ADR is
+actually about is unchanged, and is now its title: a populated profile is
+fine, an uneditable one is not.
+
+That seeding runs only on the branch that creates the account, never on a
+later startup. Re-seeding whenever the profile looked empty would quietly
+restore anything the member deleted, which is the original complaint wearing
+a different hat.
+
 Each kind's card carries its own **+ Add** button, which sets the shared form
 to that kind and focuses it, so adding the first item is one click from the
 card that says the member has none.
@@ -45,23 +59,25 @@ does not answer.
 
 ## Consequences
 
-**What this buys.** Everything on a profile was put there by the member and
-can be taken off by them, with no exception to explain. The recommender's
-behaviour as a record fills is visible from the first screen. The empty state
-is a prompt rather than a dead end.
+**What this buys.** Everything on a profile can be taken off by the member,
+with no exception to explain. The empty state is a prompt rather than a dead
+end, and the populated state is one the member can take apart.
 
-**What it costs.** A new member sees an empty panel and generic
-recommendations until they enter something, and a demonstration needs a
-minute of typing before it shows anything interesting. Tests that assumed a
-seeded history now set one up explicitly, through the `member_with_history`
-fixture — more setup per test, in exchange for each test stating the record
-it depends on.
+**What it costs.** The seeded entries are indistinguishable from ones the
+member typed, because that is the point — so a member cannot tell which lines
+the platform supplied. For a demonstration profile of invented data that is
+the right trade; for a real personnel feed it would not be, which is why that
+feed stays separate and read-only. Tests that assumed a seeded legacy history
+set one up explicitly, through the `member_with_history` fixture.
 
 ## Enforcement
 
-`test_a_seeded_member_carries_no_history` fails if the seed grows training or
-credentials again, and `test_a_new_member_starts_with_an_empty_profile` pins
-the same thing through the API.
+`test_a_seeded_member_carries_no_history` fails if the personnel feed grows
+training or credentials again.
+`test_nothing_on_a_profile_is_beyond_the_members_reach` deletes every line the
+API returns and fails if one survives, and
+`test_a_new_account_is_given_a_profile_it_owns` pins that a deleted seed entry
+does not come back.
 `test_an_empty_profile_is_asked_for_rather_than_guessed_about` pins the
 assistant's empty-profile reply, and
 `test_an_empty_profile_does_not_make_everything_answerable` keeps that reply

@@ -18,7 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import Base, SessionLocal, engine
-from app.models import KnowledgeArticle, LegacyMemberMaster, User
+from app.models import KnowledgeArticle, LegacyMemberMaster, MemberRecordItem, User
 from app.security import ROLE_AGENT, ROLE_CUSTOMER, hash_password
 
 logger = logging.getLogger("app.bootstrap")
@@ -108,6 +108,54 @@ _MEMBER_RECORDS = [
     ("MBR-100987", MEMBER_TWO_ID, "USN", "E6", "HM", 9, 300, "", "", 0),
 ]
 
+# The demo profile, seeded as the member's OWN entries rather than as
+# personnel rows.
+#
+# These used to be seeded into the legacy record, which made them read-only:
+# they showed up under "From your service record" with no Remove beside them,
+# in a panel whose whole promise is that the member controls what is on it.
+# Seeding them here instead gives a populated profile to open with -- so the
+# recommender has something to work from on the first screen -- while every
+# line stays the member's to edit or delete. The personnel feed stays empty
+# and stays read-only; nothing about ADR 0007 changes.
+#
+# Invented, like everything else here: no real person, programme or employer.
+_SEED_PROFILE: dict[uuid.UUID, list[tuple[str, str, str | None]]] = {
+    MEMBER_ID: [
+        ("CREDENTIAL", "CompTIA A+", "CompTIA"),
+        ("TRAINING", "Basic Leader Course", "U.S. Army"),
+        ("TRAINING", "Network Administration Course", "U.S. Army"),
+        ("TRAINING", "Information Assurance Fundamentals", "U.S. Army"),
+        ("EXPERIENCE", "Information Technology Specialist", "U.S. Army"),
+    ],
+    MEMBER_TWO_ID: [
+        ("CREDENTIAL", "Basic Life Support", "American Heart Association"),
+        ("TRAINING", "Hospital Corpsman A School", "U.S. Navy"),
+        ("EXPERIENCE", "Hospital Corpsman", "U.S. Navy"),
+    ],
+}
+
+
+def _seed_profile_for(db: Session, user_id: uuid.UUID) -> None:
+    """Give a newly created account its starting profile.
+
+    Called only on the branch that creates the user, which is what makes the
+    entries deletable in the way members expect: seeding on every startup, or
+    whenever the profile happens to be empty, would quietly restore anything
+    they removed -- the unremovable behaviour this was meant to end. Seeded
+    once, at account creation, and never again.
+    """
+    for kind, name, organization in _SEED_PROFILE.get(user_id, []):
+        db.add(
+            MemberRecordItem(
+                user_id=user_id,
+                kind=kind,
+                name=name,
+                organization=organization,
+                source="MANUAL",
+            )
+        )
+
 
 def create_schema() -> None:
     """Create any missing tables. Existing tables are left alone."""
@@ -141,6 +189,7 @@ def seed(db: Session) -> None:
                     password_hash=hash_password(default_password),
                 )
             )
+            _seed_profile_for(db, user_id)
             continue
 
         # The seeded accounts are matched by id, so a row created by an earlier

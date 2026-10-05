@@ -97,7 +97,24 @@ _INQUIRY_FIELDS: dict[str, tuple[str, ...]] = {
         "education",
         "experience",
     ),
-    "GENERAL": ("service_branch",),
+    # Anything the keyword rules did not recognise. This used to be the branch
+    # alone, which was the single biggest cause of the assistant refusing to
+    # answer: a career question phrased unusually -- "what else could I be
+    # doing with my background?" -- matched no list, so the model was handed
+    # one fact and correctly concluded it had nothing to go on. GENERAL is the
+    # catch-all for questions we could not categorise, not for questions that
+    # are off-topic; those are still refused by the rules on the way in, or by
+    # the model, or by the validator. It gets the same view as CAREER, minus
+    # the separation date, which is the one field the member did not enter.
+    "GENERAL": (
+        "service_branch",
+        "occupational_specialty",
+        "years_of_service",
+        "completed_training",
+        "credentials",
+        "education",
+        "experience",
+    ),
 }
 
 

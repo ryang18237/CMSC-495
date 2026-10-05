@@ -98,8 +98,9 @@ line under each reply says which one answered.
 everything the assistant knows about you, so you never have to repeat it in a
 new conversation.
 
-**Your profile starts empty.** Nothing is filled in for you, because a
-record you did not enter and cannot remove is worse than no record at all.
+**Your profile is yours.** The demo accounts open with a few entries already
+on them so there is something to work from, and every one of them has a
+**Remove** beside it — nothing is filled in that you cannot take off again.
 Three or four entries is enough for the assistant to answer about you rather
 than in general.
 

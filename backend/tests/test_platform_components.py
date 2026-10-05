@@ -75,9 +75,19 @@ def test_member_context_cache_is_keyed_by_inquiry_type(db_session: Session) -> N
     adapter = CustomerDataAdapter(db_session)
     general = adapter.get_relevant_account_data(CUSTOMER_ID, "GENERAL")
     credential = adapter.get_relevant_account_data(CUSTOMER_ID, "CREDENTIAL")
+    transition = adapter.get_relevant_account_data(CUSTOMER_ID, "TRANSITION")
 
-    assert general.available_fields == ["service_branch"]
+    # Different types really do get different views, so a shared cache key
+    # would widen what reaches the provider.
+    assert general.available_fields != credential.available_fields
+    assert general.available_fields != transition.available_fields
     assert "completed_training" in credential.available_fields
+    assert "credentials" not in transition.available_fields
+
+    # GENERAL is the uncategorised case, not a privileged one: it still never
+    # sees the separation date, which the member did not enter.
+    assert "separation_date" not in general.available_fields
+    assert "separation_date" in transition.available_fields
 
 
 # ---------------------------------------------------------------------------

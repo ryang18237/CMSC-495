@@ -25,9 +25,9 @@ push and fails if any function's cyclomatic complexity exceeds 15.
 | Component | Files | SLOC | Functions | Mean CC | Worst CC | Mean MI |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | Conversation Management | 1 | 189 | 10 | 3.20 | 8 (B) | 59.6 |
-| Customer Data Adapter | 2 | 591 | 37 | 3.86 | 13 (C) | 49.1 |
+| Customer Data Adapter | 2 | 608 | 37 | 3.86 | 13 (C) | 49.3 |
 | Knowledge Base | 1 | 86 | 7 | 3.29 | 6 (B) | 60.4 |
-| AI Integration | 9 | 1074 | 99 | 3.45 | 11 (C) | 67.7 |
+| AI Integration | 9 | 1082 | 99 | 3.45 | 11 (C) | 67.7 |
 | Response Validation | 1 | 80 | 6 | 5.00 | 10 (B) | 64.7 |
 | Escalation | 3 | 246 | 19 | 2.53 | 7 (B) | 75.6 |
 | Feedback | 1 | 81 | 5 | 2.40 | 6 (B) | 66.4 |
@@ -35,10 +35,10 @@ push and fails if any function's cyclomatic complexity exceeds 15.
 | Cache | 1 | 92 | 24 | 1.62 | 4 (A) | 59.6 |
 | Monitoring | 1 | 70 | 9 | 1.89 | 3 (A) | 67.2 |
 | API layer | 11 | 648 | 33 | 2.12 | 6 (B) | 87.1 |
-| Shared (config, schemas, errors, security, data) | 9 | 917 | 109 | 1.49 | 10 (B) | 71.2 |
-| **Total** | 41 | 4235 | 371 | 2.57 | 13 | 72.2 |
+| Shared (config, schemas, errors, security, data) | 9 | 943 | 110 | 1.49 | 10 (B) | 71.2 |
+| **Total** | 41 | 4286 | 372 | 2.57 | 13 | 72.2 |
 
-**Cyclomatic complexity grades, all functions:** A: 336 · B: 32 · C: 3 · D: 0 · E: 0 · F: 0
+**Cyclomatic complexity grades, all functions:** A: 337 · B: 32 · C: 3 · D: 0 · E: 0 · F: 0
 
 **Maintainability index grades, all files:** A: 41 · B: 0 · C: 0
 
