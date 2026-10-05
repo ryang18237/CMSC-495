@@ -30,9 +30,15 @@ Answers come from a real language model, and the launcher sets that up for
 you: it looks for [Ollama](https://ollama.com), asks once before installing
 it, starts it if it is already there, and pulls `llama3.2` the first time —
 about 2 GB, once. There is no key, no account and nothing to configure, and
-nothing a member enters leaves the machine. Decline, or pass
-`--no-local-model`, and the built-in advisor answers instead and everything
-still works — see [ADR 0011](docs/adr/0011-a-local-model-is-the-default.md).
+nothing a member enters leaves the machine. The model is **not** in this
+repository and never will be: Ollama stores it outside the project, and each
+person's copy pulls its own.
+
+A language model is the only thing that answers a member. If it is not
+running, the assistant says so and names the command that starts it, rather
+than falling back to template text that reads like real advice — see
+[ADR 0011](docs/adr/0011-a-local-model-is-the-default.md) and
+[ADR 0013](docs/adr/0013-the-advisor-leaves-the-runtime.md).
 
 ```bash
 git clone https://github.com/ryang18237/CMSC-495.git
@@ -55,7 +61,7 @@ side. Full setup, PostgreSQL and troubleshooting: [`docs/INSTALL.md`](docs/INSTA
 
 Interactive API documentation runs at <http://127.0.0.1:8000/docs>.
 
-**No API key is needed.** The built-in advisor answers from the member's
+**No API key is needed.** The local model answers from the member's
 profile, so the platform is complete as cloned. To have Claude or ChatGPT
 answer instead, whoever runs the server adds one key to `backend/.env` — see
 [Adding Claude or ChatGPT](docs/AI_FEATURES.md#adding-claude-or-chatgpt).
@@ -67,7 +73,7 @@ answer instead, whoever runs the server adds one key to `backend/.env` — see
 | Feature | Detail |
 | --- | --- |
 | **My profile** | Members enter credentials, education, experience and training once — typed in, or imported from a resume or transcript — and every conversation and recommendation uses them from then on. |
-| **Conversational assistant** | Answers grounded in the member's profile and approved articles, with sources shown. Works with **no API key**: a built-in advisor composes answers from the profile and the recommender. Claude and ChatGPT are optional upgrades the operator adds; members are never asked for a key. |
+| **Conversational assistant** | Answers grounded in the member's profile and approved articles, with sources shown. Works with **no API key**: a language model runs locally through Ollama, which the launcher sets up. Claude and ChatGPT are optional upgrades the operator adds; members are never asked for a key. |
 | **Pathway recommender** | Ranks 23 civilian credentials and programs against the member's record using TF-IDF and cosine similarity, explains each suggestion, never suggests something already held. Needs no key. |
 | **Response validation** | Every generated answer is checked before a member sees it — no claims of enrolling or applying, no guaranteed outcomes, no sensitive identifiers, no truncated text. |
 | **Deterministic escalation** | Five rule-based reasons hand a conversation to a person: member request, security concern, unsupported topic, validation failure, AI service failure. |
@@ -123,7 +129,7 @@ React client ──HTTP──▶ API layer ──▶ Conversation Management ─
 | Coverage | 94.4% backend lines · 90.3% frontend lines, with floors in CI |
 | Complexity | Mean cyclomatic complexity 2.6; no function above 15; CI limit 15 |
 | Static analysis | 0 findings — ruff, mypy, ESLint, actionlint |
-| Latency | Conversation turn p95 128 ms at 10 concurrent clients (built-in advisor); target 5 s |
+| Latency | Conversation turn p95 128 ms at 10 concurrent clients (measured on the deterministic test provider); target 5 s |
 | Recommender | Relevant pathway in the top three for 7 of 7 labelled records |
 
 Details and how each is measured: [`docs/metrics/`](docs/metrics/README.md).
@@ -183,9 +189,12 @@ Recorded in full, with consequences, in section 10 of the
 [architecture design](docs/ARCHITECTURE_DESIGN.md#10-known-architectural-debt).
 The ones to know before relying on this:
 
-- The built-in advisor routes on topic rather than understanding free text,
-  so unusual phrasings reach a counsellor instead of being answered. Configure
+- A 3B model on a laptop is slower and less capable than a hosted one, and
+  the first question after startup pays for loading the weights. Configure
   Claude or ChatGPT on the server for wider coverage.
+- If the local model is not running, the assistant does not answer at all: it
+  says so and escalates. That is deliberate (ADR 0013), but it does mean the
+  assistant has a dependency the rest of the platform does not.
 - The cache and rate-limit counters are per process, so instances are not yet
   fully stateless; monitoring counters are per instance and not exported.
 - The provider call is synchronous and holds a worker thread for its duration.

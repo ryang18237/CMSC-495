@@ -871,19 +871,23 @@ def report_ai_provider(default_model: str = "llama3.2") -> None:
         return
 
     name = str(dependencies.get("ai_provider_name") or "")
+    status = str(dependencies.get("ai_provider") or "")
     labels = {
-        "builtin": "Built-in advisor (no key, keyword-routed)",
         "ollama": "Local model through Ollama",
         "anthropic": "Claude",
         "openai": "ChatGPT",
+        "builtin": "Built-in advisor (test stand-in -- members never see this)",
     }
     if not name:
         return
 
     info(f"Assistant: {labels.get(name, name)}")
-    if name == "builtin":
+    # The advisor is no longer a destination, so "not ready" is now worth
+    # saying loudly: the assistant will decline to answer rather than quietly
+    # producing template text, and the reader is the one who can fix it.
+    if name == "ollama" and status and status != "ok":
+        warn("The local model is not ready, so the assistant cannot answer yet.")
         info(_OLLAMA_HINT.format(model=default_model, page=OLLAMA_PAGE))
-        info("Nothing else to configure -- it is picked up automatically.")
 
 
 def wait_for(url: str, timeout: int = 60) -> bool:

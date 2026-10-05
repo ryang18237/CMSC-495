@@ -80,15 +80,15 @@ machine, and there is no account, key or bill. Answer no and the platform
 starts anyway on the built-in advisor. To skip the question entirely, run
 `python run.py --no-local-model`.
 
-**The built-in advisor** is the fallback, and it needs nothing at all. It is
-deliberately narrow: it handles the questions this service is for — what to
-study or certify next, degree or credential, how to describe your background
-on a resume, what is on your profile — and hands anything else to a counsellor
-rather than guessing.
+**There is no fallback, on purpose.** A language model is the only thing that
+answers you. If it is not running, the assistant says exactly that and names
+the command that starts it, and a counsellor picks up your question in the
+meantime. It will not quietly answer from a template instead, because you
+would have no way to tell that apart from real advice about your career.
 
-Whichever is answering, the line under each reply says so. If whoever runs
-your copy has also added Claude or ChatGPT, a **Model** menu appears at the top
-of the chat and you can pick between them per message.
+If whoever runs your copy has also added Claude or ChatGPT, a **Model** menu
+appears at the top of the chat and you can pick between them per message. The
+line under each reply says which one answered.
 
 ### My profile
 

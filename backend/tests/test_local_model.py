@@ -16,7 +16,7 @@ import httpx
 import pytest
 
 from app.config import get_settings
-from app.modules.ai_integration.contracts import Prompt
+from app.modules.ai_integration.contracts import AIOutcome, AIProviderError, Prompt
 from app.modules.ai_integration.providers._http import reset_shared_http_client
 from app.modules.ai_integration.providers.ollama_provider import (
     PLACEHOLDER_KEY,
@@ -26,6 +26,7 @@ from app.modules.ai_integration.providers.ollama_provider import (
 )
 from app.modules.ai_integration.providers.openai_provider import MAX_TOKENS, OpenAIProvider
 from app.modules.ai_integration.service import (
+    AIIntegrationService,
     available_providers,
     build_provider,
     resolve_auto,
@@ -160,11 +161,17 @@ def test_auto_prefers_a_local_model_when_one_is_running(monkeypatch, auto_select
     assert build_provider().name == "ollama"
 
 
-def test_auto_falls_back_to_the_builtin_advisor(monkeypatch, auto_selection):
-    """No Ollama, no problem: the platform still answers."""
+def test_auto_never_falls_back_to_the_builtin_advisor(monkeypatch, auto_selection):
+    """No Ollama means no answer, not a canned one.
+
+    Falling back here would be the worst of both: the member reads template
+    text as the assistant's considered view, and nobody learns that the model
+    was never running. `auto` stays on the local model so the failure is the
+    true one, and the member is told what to start.
+    """
     monkeypatch.setattr(OllamaProvider, "health", lambda self: "unavailable")
-    assert resolve_auto() == "builtin"
-    assert build_provider().name == "builtin"
+    assert resolve_auto() == "ollama"
+    assert build_provider().name == "ollama"
 
 
 def test_naming_a_provider_overrides_the_guess(monkeypatch):
@@ -362,3 +369,32 @@ def test_an_answer_in_the_reasoning_field_is_still_an_answer():
         )
 
     assert _provider(handler).generate(PROMPT).text == "Security+ is the next step."
+
+
+def test_a_stopped_daemon_is_explained_rather_than_called_an_outage(monkeypatch):
+    """"The model is not running" is fixable in a minute. Say which minute.
+
+    The generic outage message gave the reader nothing to act on, so a stopped
+    daemon read as a broken product.
+    """
+    monkeypatch.setattr(OllamaProvider, "health", lambda self: "unavailable")
+    service = AIIntegrationService(provider=OllamaProvider())
+
+    result = service.handle_provider_failure(AIProviderError("connect refused"))
+
+    assert result.outcome == AIOutcome.PROVIDER_FAILURE
+    assert "not running" in result.text
+    assert "run.py" in result.text
+    # The reason still never reaches the member.
+    assert "connect refused" not in result.text
+    assert result.error_detail == "connect refused"
+
+
+def test_a_running_model_that_fails_is_not_blamed_on_the_daemon(monkeypatch):
+    """A 500 from a healthy daemon is an outage, not a setup problem."""
+    monkeypatch.setattr(OllamaProvider, "health", lambda self: "ok")
+    service = AIIntegrationService(provider=OllamaProvider())
+
+    result = service.handle_provider_failure(AIProviderError("Provider returned 500."))
+
+    assert "not running" not in result.text

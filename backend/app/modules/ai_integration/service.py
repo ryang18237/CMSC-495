@@ -30,6 +30,19 @@ FALLBACK_MESSAGE = (
     "counsellor available to pick this up for you."
 )
 
+# The local model is the only thing that answers members, so "it is not
+# running" is now a first-class outcome rather than a generic outage. It is
+# also the one failure the reader can fix in a minute, and the generic message
+# gave them nothing to act on -- it read as a broken product rather than a
+# stopped service.
+LOCAL_MODEL_DOWN_MESSAGE = (
+    "The local language model is not running, so I cannot answer you properly "
+    "yet -- and I would rather say that than guess at your education or career "
+    "plans. Start it and ask me again: run `ollama serve` in a terminal, or just "
+    "restart the platform with `python run.py`, which starts it for you. A career "
+    "counsellor is available in the meantime."
+)
+
 SYSTEM_INSTRUCTION = (
     "You are the assistant for SkillBridge AI, a free education and professional "
     "development service for military members and veterans. "
@@ -60,25 +73,38 @@ def shutdown() -> None:
     reset_shared_http_client()
 
 
-# Every provider the platform knows, with the name a member sees. The built-in
-# advisor needs no key and is therefore always available, which is what lets
-# the platform be installed and used with no sign-ups and nothing to configure.
+# Every provider the platform knows, with the name a member sees.
 _PROVIDERS: dict[str, tuple[str, type[AIProvider]]] = {
-    "builtin": ("Built-in advisor", BuiltInAdvisor),
     "ollama": ("Local model", OllamaProvider),
     "anthropic": ("Claude", AnthropicProvider),
     "openai": ("ChatGPT", OpenAIProvider),
+    "builtin": ("Built-in advisor", BuiltInAdvisor),
 }
 
-# `mock` was this provider's name while it was a test double. Configuration
-# files and CI still say it, so it keeps working.
-_ALIASES = {"mock": "builtin", "": "builtin"}
+# The built-in advisor is not one of them. It routes on topic keywords and
+# composes an answer from templates, which is a useful stand-in for a language
+# model in a test -- deterministic, instant, free, no daemon -- and a poor
+# substitute for one in front of a member. Offered alongside a real model it
+# gets chosen by accident, and the member reads canned text as the product's
+# best effort; offered as a silent fallback it turns "the model is not running"
+# into an answer that looks deliberate. Neither failure is visible from the
+# outside, which is what makes them expensive.
+#
+# So it stays in the codebase and leaves the runtime: never listed to a member,
+# never resolved by `auto`, reachable only by naming it outright in
+# AI_PROVIDER, which is what CI does. Members get a real language model or an
+# honest explanation of why they cannot.
+_MEMBER_FACING = ("ollama", "anthropic", "openai")
+TEST_ONLY_PROVIDER = "builtin"
+
+# `mock` was this provider's name while it was a test double, which is again
+# all it is. Configuration files and CI still say it, so it keeps working.
+_ALIASES = {"mock": "builtin", "": "auto"}
 
 # What "auto" tries, in order. A local model first: it is the only option that
 # is both a real language model and free of keys, accounts and cost, so it is
-# what someone who has configured nothing should get when their machine can
-# run it. The built-in advisor is last because it always works.
-_AUTO_ORDER = ("ollama", "builtin")
+# what someone who has configured nothing should get.
+_AUTO_ORDER = ("ollama", "anthropic", "openai")
 
 AUTO = "auto"
 
@@ -93,12 +119,18 @@ def resolve_auto() -> str:
 
     Resolved on each call rather than at import: starting Ollama should be
     noticed without restarting the platform.
+
+    With nothing reachable this still answers "ollama" rather than falling
+    back. The caller then fails against a provider that is genuinely the one
+    the platform wants, and the member is told the local model is not running
+    -- which is true, and fixable -- instead of being handed template text
+    that reads like the assistant's real opinion.
     """
     for provider_id in _AUTO_ORDER:
         _, provider_class = _PROVIDERS[provider_id]
         if provider_class().health() == "ok":
             return provider_id
-    return "builtin"
+    return _AUTO_ORDER[0]
 
 
 def configured_provider() -> str:
@@ -118,13 +150,13 @@ class ProviderOption:
 def build_provider(name: str | None = None) -> AIProvider:
     """Provider factory. Selection is configuration, or a member's choice.
 
-    An unknown name falls back to the built-in advisor rather than failing:
-    a typo in configuration should degrade the answers, not the platform.
+    An unknown name resolves the same way `auto` does rather than failing: a
+    typo in configuration should not take the platform down.
     """
     selected = _canonical(name) if name else configured_provider()
-    if selected == AUTO:
+    if selected == AUTO or selected not in _PROVIDERS:
         selected = resolve_auto()
-    _, provider_class = _PROVIDERS.get(selected, _PROVIDERS["builtin"])
+    _, provider_class = _PROVIDERS[selected]
     return provider_class()
 
 
@@ -145,11 +177,11 @@ def available_providers() -> list[ProviderOption]:
     """
     ready = [
         provider_id
-        for provider_id, (_, provider_class) in _PROVIDERS.items()
-        if provider_class().health() == "ok"
+        for provider_id in _MEMBER_FACING
+        if _PROVIDERS[provider_id][1]().health() == "ok"
     ]
     configured = configured_provider()
-    default = configured if configured in ready else "builtin"
+    default = configured if configured in ready else (ready[0] if ready else "")
     return [
         ProviderOption(
             provider_id=provider_id,
@@ -256,6 +288,8 @@ class AIIntegrationService:
         the length is capped here where every provider passes through.
         """
         detail = str(error)[:ERROR_DETAIL_LIMIT]
+        unreachable = self._provider.name == "ollama" and self._provider.health() != "ok"
+        message = LOCAL_MODEL_DOWN_MESSAGE if unreachable else FALLBACK_MESSAGE
         # The member is told only that a person will pick it up. Whoever runs
         # the server needs the actual reason, and until now it was recorded on
         # the result and then dropped -- which made "assistant service
@@ -265,7 +299,7 @@ class AIIntegrationService:
         )
         return AIResult(
             outcome=AIOutcome.PROVIDER_FAILURE,
-            text=FALLBACK_MESSAGE,
+            text=message,
             model=self._provider.name,
             sources=[],
             latency_ms=latency_ms,

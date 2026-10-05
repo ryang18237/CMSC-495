@@ -133,10 +133,11 @@ def test_without_a_key_it_is_unavailable_and_never_calls_out():
 # Which providers are offered
 # ---------------------------------------------------------------------------
 @pytest.mark.usefixtures("no_keys")
-def test_with_no_keys_only_the_builtin_advisor_is_offered():
-    options = available_providers()
-    assert [option.provider_id for option in options] == ["builtin"]
-    assert options[0].is_default
+def test_the_builtin_advisor_is_never_offered_to_a_member():
+    """It is a test double. Offered beside a real model it gets picked by accident."""
+    assert [option.provider_id for option in available_providers()] == []
+    assert not is_available("builtin")
+    assert not is_available("mock")
 
 
 def test_a_provider_is_offered_once_its_key_is_set(monkeypatch):
@@ -144,14 +145,16 @@ def test_a_provider_is_offered_once_its_key_is_set(monkeypatch):
     monkeypatch.setattr(get_settings(), "openai_api_key", "sk-openai-test")
     monkeypatch.setattr(get_settings(), "ai_provider", "anthropic")
     options = {option.provider_id: option for option in available_providers()}
-    assert set(options) == {"anthropic", "openai", "builtin"}
+    assert set(options) == {"anthropic", "openai"}
     assert options["anthropic"].is_default
     assert options["openai"].label == "ChatGPT"
 
 
 def test_factory_builds_each_provider():
     assert isinstance(build_provider("openai"), OpenAIProvider)
-    assert isinstance(build_provider("unknown"), BuiltInAdvisor)
+    # A typo in configuration resolves like `auto` rather than taking the
+    # platform down -- and never silently to the advisor.
+    assert not isinstance(build_provider("unknown"), BuiltInAdvisor)
 
 
 @pytest.mark.usefixtures("no_keys")
@@ -159,7 +162,7 @@ def test_providers_endpoint_never_exposes_a_key(client: TestClient, customer_aut
     monkeypatch.setattr(get_settings(), "openai_api_key", "sk-openai-secret-value")
     response = client.get("/api/v1/ai/providers", headers=customer_auth)
     assert response.status_code == 200
-    assert {item["providerId"] for item in response.json()} == {"openai", "builtin"}
+    assert {item["providerId"] for item in response.json()} == {"openai"}
     assert "sk-openai-secret-value" not in response.text
 
 
@@ -403,10 +406,16 @@ def test_an_unrecognised_question_reaches_a_person_rather_than_being_guessed(
     assert reply["escalationReason"] == "UNSUPPORTED_TOPIC"
 
 
-def test_the_old_mock_name_still_selects_the_advisor():
-    """Existing .env files and CI config say AI_PROVIDER=mock."""
+def test_the_advisor_is_reachable_only_by_naming_it_outright():
+    """CI pins AI_PROVIDER=builtin (or the older `mock`) and gets it.
+
+    That is the whole remaining use: a deterministic, instant, daemon-free
+    stand-in for a language model in a test run. A member cannot reach it,
+    because nothing offers it and nothing resolves to it.
+    """
+    assert isinstance(build_provider("builtin"), BuiltInAdvisor)
     assert isinstance(build_provider("mock"), BuiltInAdvisor)
-    assert is_available("mock")
+    assert not is_available("builtin")
 
 
 @pytest.mark.usefixtures("no_keys")

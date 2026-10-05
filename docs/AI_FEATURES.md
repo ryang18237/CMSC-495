@@ -11,8 +11,8 @@ different ways, so they are built differently on purpose.
 | --- | --- | --- |
 | What the member sees | Answers to free-text questions in the chat | "Recommended next steps" panel beside the chat |
 | Technique | A provider interface: a rule-based advisor in process, or a managed language model | Content-based filtering: TF-IDF vectors and cosine similarity |
-| Needs an API key | No — the built-in advisor answers. Claude and ChatGPT are optional | No |
-| Deterministic | Yes on the built-in advisor, no on a managed model | Yes — same profile, same list |
+| Needs an API key | No — a local model answers. Claude and ChatGPT are optional | No |
+| Deterministic | No — it is a language model | Yes — same profile, same list |
 | When it fails | Escalates to a counsellor with `AI_SERVICE_FAILURE` | Falls back to general starting points |
 | Code | `providers/builtin.py`, `providers/anthropic_provider.py`, `providers/openai_provider.py` | `recommender.py` |
 | Endpoint | `POST /api/v1/conversations/{id}/messages` | `GET /api/v1/pathways/recommended` |
@@ -63,14 +63,21 @@ interface to enter one, by design.
 
 | Provider id | Member sees | Needs | Runs |
 | --- | --- | --- | --- |
-| `builtin` | Built-in advisor | nothing | in process, offline |
+| `builtin` | Built-in advisor — **tests only**, never offered to a member | nothing | in process, offline |
 | `ollama` | Local model | Ollama installed | on this machine |
 | `anthropic` | Claude | `ANTHROPIC_API_KEY` | Anthropic Messages API |
 | `openai` | ChatGPT | `OPENAI_API_KEY` | OpenAI Chat Completions |
 
-The shipped default is `AI_PROVIDER=auto`, which means: a local model if this
-machine can run one, the built-in advisor otherwise. Both are free, keyless
-and private; the difference is that the first is a real language model. Claude and ChatGPT are
+The shipped default is `AI_PROVIDER=auto`, which means the local model. It
+does **not** fall back to the built-in advisor — that is a test double, and a
+member who reads its template text has no way to tell a stopped daemon from
+real advice. With nothing reachable the assistant says the model is not
+running and names the command that starts it (ADR 0013). CI reaches the
+advisor by naming it outright, `AI_PROVIDER=builtin`, which is the only thing
+that still should.
+
+The local model is free, keyless and private, and it is a real language
+model. Claude and ChatGPT are
 upgrades that **whoever runs the server** configures once, in
 `backend/.env`; every member of that server then benefits without touching a
 key. `GET /api/v1/ai/providers` lists only what the server can actually
@@ -96,8 +103,9 @@ because the launcher only does what a person would have done.
 
 Either way the platform finds the daemon by itself — `run.py` prints `Assistant: Local model through Ollama` — because
 `AI_PROVIDER=auto` probes `GET /v1/models` on startup and on each turn. Stop
-Ollama and the next turn falls back to the built-in advisor without an error;
-start it again and answers come from the model again, with no restart.
+Ollama and the next turn tells the member the model is not running rather
+than answering from a template; start it again and answers come back, with no
+restart.
 
 **One field name, two servers.** OpenAI renamed the reply-length cap to
 `max_completion_tokens` and rejects the old name on its newer models; Ollama
@@ -135,9 +143,13 @@ or ChatGPT and slower per token than either. `AI_TIMEOUT_SECONDS` applies
 unchanged, so a model too slow for the budget degrades to a counsellor
 hand-off rather than hanging the conversation.
 
-### The built-in advisor
+### The built-in advisor (tests only)
 
-Not a placeholder. It reads the member's profile — credentials, training,
+Members never see this. It is the deterministic stand-in CI runs against —
+instant, free, no daemon — and it is reachable only by setting
+`AI_PROVIDER=builtin` outright. ADR 0013 has why it left the runtime.
+
+It reads the member's profile — credentials, training,
 education, experience, all minimised by the Customer Data Adapter exactly as
 they would be for a managed model — and composes an answer, asking the pathway
 recommender which next steps actually follow. Two members get different

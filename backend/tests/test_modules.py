@@ -266,7 +266,8 @@ def test_mock_provider_reports_unsupported_topic() -> None:
 def test_provider_factory_selects_by_configuration() -> None:
     assert isinstance(build_provider("mock"), BuiltInAdvisor)
     assert isinstance(build_provider("anthropic"), AnthropicProvider)
-    assert isinstance(build_provider("something-else"), BuiltInAdvisor)
+    # An unknown name resolves like `auto`, never silently to the advisor.
+    assert not isinstance(build_provider("something-else"), BuiltInAdvisor)
 
 
 def test_anthropic_provider_reports_unavailable_without_a_key() -> None:

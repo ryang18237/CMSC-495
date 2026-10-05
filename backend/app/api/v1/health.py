@@ -40,7 +40,9 @@ def health(response: Response, db: Session = Depends(get_db)) -> HealthResponse:
         status = "unavailable"
         response.status_code = 503
     elif dependencies["ai_provider"] != "ok":
-        # The platform still answers: failed AI calls fall back and escalate.
+        # Degraded rather than unavailable: sign-in, the profile, the
+        # recommender and the counsellor queue all still work. Only the
+        # assistant cannot answer, and it says so and escalates.
         status = "degraded"
     else:
         status = "healthy"

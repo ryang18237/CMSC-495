@@ -27,18 +27,18 @@ push and fails if any function's cyclomatic complexity exceeds 15.
 | Conversation Management | 1 | 188 | 10 | 3.10 | 8 (B) | 59.0 |
 | Customer Data Adapter | 2 | 591 | 37 | 3.86 | 13 (C) | 49.1 |
 | Knowledge Base | 1 | 86 | 7 | 3.29 | 6 (B) | 60.4 |
-| AI Integration | 9 | 1056 | 98 | 3.41 | 11 (C) | 67.8 |
+| AI Integration | 9 | 1071 | 98 | 3.49 | 11 (C) | 67.7 |
 | Response Validation | 1 | 80 | 6 | 5.00 | 10 (B) | 64.7 |
 | Escalation | 3 | 246 | 19 | 2.53 | 7 (B) | 75.6 |
 | Feedback | 1 | 81 | 5 | 2.40 | 6 (B) | 66.4 |
 | Learning Analytics Worker | 1 | 161 | 13 | 2.69 | 5 (A) | 50.0 |
 | Cache | 1 | 92 | 24 | 1.62 | 4 (A) | 56.9 |
 | Monitoring | 1 | 70 | 9 | 1.89 | 3 (A) | 67.2 |
-| API layer | 11 | 647 | 33 | 2.12 | 6 (B) | 86.0 |
+| API layer | 11 | 647 | 33 | 2.12 | 6 (B) | 86.5 |
 | Shared (config, schemas, errors, security, data) | 9 | 917 | 109 | 1.49 | 10 (B) | 71.2 |
-| **Total** | 41 | 4215 | 370 | 2.55 | 13 | 71.9 |
+| **Total** | 41 | 4230 | 370 | 2.57 | 13 | 72.0 |
 
-**Cyclomatic complexity grades, all functions:** A: 336 · B: 31 · C: 3 · D: 0 · E: 0 · F: 0
+**Cyclomatic complexity grades, all functions:** A: 335 · B: 32 · C: 3 · D: 0 · E: 0 · F: 0
 
 **Maintainability index grades, all files:** A: 41 · B: 0 · C: 0
 
@@ -52,8 +52,8 @@ push and fails if any function's cyclomatic complexity exceeds 15.
 | 10 (B) | `backend/app/modules/validation/service.py::ResponseValidationService.validate_response` |
 | 10 (B) | `backend/app/modules/customer_data/member_record.py::_rows_from_csv` |
 | 10 (B) | `backend/app/modules/ai_integration/recommender.py::_matched_terms` |
+| 10 (B) | `backend/app/modules/ai_integration/providers/openai_provider.py::OpenAIProvider._text_of` |
 | 10 (B) | `backend/app/modules/ai_integration/providers/builtin.py::_next_steps` |
-| 10 (B) | `backend/app/modules/ai_integration/providers/anthropic_provider.py::AnthropicProvider._parse` |
 <!-- quality-report:end -->
 
 ## What the numbers say

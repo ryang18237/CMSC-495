@@ -34,3 +34,4 @@ deleting it hides the reasoning.
 | [0010](0010-a-plan-is-not-a-record.md) | A development plan is a separate kind, not a flag | Accepted |
 | [0011](0011-a-local-model-is-the-default.md) | A local model is the default, not a hosted one | Accepted |
 | [0012](0012-a-profile-starts-empty.md) | A profile starts empty | Accepted |
+| [0013](0013-the-advisor-leaves-the-runtime.md) | The built-in advisor is a test double, not a fallback | Accepted |
