@@ -15,6 +15,8 @@ Options
     python run.py --postgres     require PostgreSQL; do not fall back
     python run.py --db-url URL   use a specific database
     python run.py --no-browser   do not open a browser window
+    python run.py --no-local-model      skip the Ollama setup entirely
+    python run.py --install-local-model install Ollama without asking
 
 Nothing here changes how the application is built. It only automates the setup
 steps documented in the README, so `uvicorn app.main:app` and `npm run dev`
@@ -656,14 +658,210 @@ def _fetch_json(url: str) -> dict[str, object]:
     return loaded if isinstance(loaded, dict) else {}
 
 
+# ---------------------------------------------------------------------------
+# The local language model
+# ---------------------------------------------------------------------------
+# The assistant answers through whatever provider resolves at runtime. Ollama
+# is the one that needs software on the machine, so the launcher sets it up
+# rather than printing instructions and leaving the reader to follow them: it
+# finds Ollama, starts the daemon if it is installed but not running, and
+# pulls the model if it has never been pulled. Downloading and running an
+# installer is the one step it will not do on its own -- that is a decision
+# about someone's computer, so it is asked for, and declining it simply falls
+# back to the built-in advisor.
+OLLAMA_PORT = 11434
+OLLAMA_URL = f"http://127.0.0.1:{OLLAMA_PORT}"
+OLLAMA_MODEL = "llama3.2"
+OLLAMA_PAGE = "https://ollama.com/download"
+OLLAMA_WINDOWS_INSTALLER = "https://ollama.com/download/OllamaSetup.exe"
+OLLAMA_UNIX_SCRIPT = "https://ollama.com/install.sh"
+
+# The model is about two gigabytes. A pull on a slow connection is slow, not
+# broken, so the wait is generous and the download prints its own progress.
+_PULL_TIMEOUT = 45 * 60
+_DAEMON_TIMEOUT = 30
+
+
+def _ollama_dirs() -> list[Path]:
+    """Where the official installers put Ollama, in case PATH has not caught up."""
+    if IS_WINDOWS:
+        roots = [
+            (os.environ.get("LOCALAPPDATA"), r"Programs\Ollama"),
+            (os.environ.get("ProgramFiles") or r"C:\Program Files", "Ollama"),
+        ]
+        return [Path(root) / leaf for root, leaf in roots if root]
+    return [
+        Path(p)
+        for p in (
+            "/usr/local/bin",
+            "/opt/homebrew/bin",
+            "/usr/bin",
+            "/Applications/Ollama.app/Contents/Resources",
+        )
+    ]
+
+
+def ollama_command() -> str | None:
+    name = "ollama.exe" if IS_WINDOWS else "ollama"
+    found = shutil.which("ollama")
+    if found:
+        return found
+    for directory in _ollama_dirs():
+        candidate = directory / name
+        if candidate.is_file():
+            return str(candidate)
+    return None
+
+
+def _ollama_models() -> set[str] | None:
+    """Model names the daemon reports, or None when it is not answering."""
+    try:
+        with urllib.request.urlopen(f"{OLLAMA_URL}/v1/models", timeout=3) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+    except (urllib.error.URLError, OSError, ValueError):
+        return None
+    data = payload.get("data") if isinstance(payload, dict) else None
+    names: set[str] = set()
+    for entry in data or []:
+        model_id = entry.get("id") if isinstance(entry, dict) else None
+        if isinstance(model_id, str):
+            names.add(model_id)
+            # Ollama reports 'llama3.2:latest'; people write 'llama3.2'.
+            names.add(model_id.split(":", 1)[0])
+    return names
+
+
+def _start_ollama(executable: str) -> bool:
+    """Start the daemon in the background and wait for it to answer."""
+    step("Starting the local model service")
+    creation = subprocess.CREATE_NO_WINDOW if IS_WINDOWS else 0  # type: ignore[attr-defined]
+    try:
+        subprocess.Popen(
+            [executable, "serve"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            creationflags=creation,
+        )
+    except OSError as error:
+        warn(f"Could not start Ollama: {error}")
+        return False
+    deadline = time.monotonic() + _DAEMON_TIMEOUT
+    while time.monotonic() < deadline:
+        if _ollama_models() is not None:
+            return True
+        time.sleep(0.5)
+    warn("Ollama did not start in time.")
+    return False
+
+
+def _pull_model(executable: str, model: str) -> bool:
+    step(f"Downloading the {model} model (about 2 GB, once)")
+    info("This happens only the first time. Progress is printed below.")
+    try:
+        completed = subprocess.run([executable, "pull", model], timeout=_PULL_TIMEOUT)
+    except (OSError, subprocess.TimeoutExpired) as error:
+        warn(f"The download did not finish: {error}")
+        return False
+    if completed.returncode != 0:
+        warn(f"`ollama pull {model}` failed.")
+        return False
+    return True
+
+
+def _agreed(question: str, assume_yes: bool) -> bool:
+    if assume_yes:
+        return True
+    if not sys.stdin.isatty():
+        # Nobody is there to answer, and installing software unattended is not
+        # a decision this script gets to make for someone.
+        return False
+    try:
+        answer = input(f"{question} [y/N] ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return False
+    return answer in ("y", "yes")
+
+
+def _install_ollama(assume_yes: bool) -> str | None:
+    """Offer to install Ollama, and return its path if it ends up installed."""
+    info("Ollama is not installed. It runs the language model on this machine,")
+    info("so nothing is sent anywhere and there is no account or key to set up.")
+    if not _agreed(f"Download and install Ollama from {OLLAMA_PAGE}?", assume_yes):
+        info(f"Skipping. You can install it yourself later from {OLLAMA_PAGE}.")
+        return None
+
+    if IS_WINDOWS:
+        installer = Path(os.environ.get("TEMP") or ".") / "OllamaSetup.exe"
+        step("Downloading the Ollama installer")
+        try:
+            urllib.request.urlretrieve(OLLAMA_WINDOWS_INSTALLER, installer)
+        except (urllib.error.URLError, OSError) as error:
+            warn(f"Download failed: {error}")
+            return None
+        step("Running the installer")
+        try:
+            subprocess.run([str(installer), "/VERYSILENT", "/NORESTART"], check=False)
+        except OSError as error:
+            warn(f"The installer did not run: {error}")
+            return None
+    elif platform.system() == "Darwin" and shutil.which("brew"):
+        step("Installing Ollama with Homebrew")
+        subprocess.run(["brew", "install", "ollama"], check=False)
+    elif platform.system() == "Linux":
+        step("Installing Ollama")
+        subprocess.run(f"curl -fsSL {OLLAMA_UNIX_SCRIPT} | sh", shell=True, check=False)
+    else:
+        info(f"Automatic installation is not available here. Install it from {OLLAMA_PAGE}.")
+        return None
+
+    executable = ollama_command()
+    if executable is None:
+        warn("Ollama still was not found after installing.")
+        info("Open a new terminal and run this script again -- PATH may be stale.")
+    return executable
+
+
+def ensure_local_model(args: argparse.Namespace) -> None:
+    """Make the local model usable, quietly, before the API decides what to use.
+
+    Everything here is best effort. A machine with no Ollama, no network or a
+    declined install still starts the platform -- the assistant falls back to
+    the built-in advisor, and `report_ai_provider` says so afterwards.
+    """
+    if getattr(args, "no_local_model", False):
+        return
+    configured = os.environ.get("AI_PROVIDER", "auto").strip().lower()
+    if configured not in ("", "auto", "ollama"):
+        # Someone has chosen a provider on purpose. Respect it.
+        return
+
+    model = os.environ.get("OLLAMA_MODEL", OLLAMA_MODEL)
+    executable = ollama_command()
+    if executable is None:
+        executable = _install_ollama(getattr(args, "install_local_model", False))
+        if executable is None:
+            return
+
+    models = _ollama_models()
+    if models is None and not _start_ollama(executable):
+        return
+    if models is None:
+        models = _ollama_models() or set()
+
+    if model not in models and not _pull_model(executable, model):
+        return
+    info(f"Local model ready: {model}")
+
+
 # How the assistant answers is the thing people most often get wrong about
 # this platform ("why is it giving me the same paragraph?"), so the launcher
 # says which provider the server actually resolved -- read back from
 # /health rather than worked out a second time here, so the two can never
 # disagree -- and, when it is the fallback, how to get a real model.
 _OLLAMA_HINT = (
-    "For answers from a real language model, install Ollama "
-    "(https://ollama.com), then run:  ollama pull {model}"
+    "For answers from a real language model, install Ollama ({page}) and "
+    "start this script again -- it will pull {model} for you."
 )
 
 
@@ -684,7 +882,7 @@ def report_ai_provider(default_model: str = "llama3.2") -> None:
 
     info(f"Assistant: {labels.get(name, name)}")
     if name == "builtin":
-        info(_OLLAMA_HINT.format(model=default_model))
+        info(_OLLAMA_HINT.format(model=default_model, page=OLLAMA_PAGE))
         info("Nothing else to configure -- it is picked up automatically.")
 
 
@@ -764,6 +962,8 @@ def serve(python: Path, env: dict[str, str], label: str, args: argparse.Namespac
     npm = npm_command()
 
     try:
+        ensure_local_model(args)
+
         if not free_port(API_PORT, "API"):
             return 1
         if not args.api_only and npm is not None and not free_port(WEB_PORT, "web client"):
@@ -919,6 +1119,16 @@ def main() -> int:
     parser.add_argument("--postgres", action="store_true", help="require PostgreSQL")
     parser.add_argument("--db-url", metavar="URL", help="use a specific database")
     parser.add_argument("--no-browser", action="store_true", help="do not open a browser")
+    parser.add_argument(
+        "--no-local-model",
+        action="store_true",
+        help="do not set up Ollama; use the built-in advisor",
+    )
+    parser.add_argument(
+        "--install-local-model",
+        action="store_true",
+        help="install Ollama without asking first",
+    )
     parser.add_argument(
         "--reinstall", action="store_true", help="reinstall dependencies from scratch"
     )
