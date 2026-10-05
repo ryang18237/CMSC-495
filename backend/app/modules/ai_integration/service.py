@@ -206,6 +206,11 @@ class AIIntegrationService:
     def provider_name(self) -> str:
         return self._provider.name
 
+    @property
+    def provider_timeout_seconds(self) -> float:
+        """The request budget this provider will actually honour."""
+        return float(getattr(self._provider, "_timeout", get_settings().ai_timeout_seconds))
+
     def provider_health(self) -> str:
         try:
             return self._provider.health()

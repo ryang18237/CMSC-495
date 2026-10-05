@@ -250,11 +250,17 @@ class ConversationService:
         elapsed_ms = int(elapsed * 1000)
         over_target = elapsed > RESPONSE_TARGET_SECONDS
 
+        # The reason was recorded in the metrics and left out of the log, so a
+        # turn that ended ESCALATED looked identical whether the model had
+        # declined the question, the validator had rejected its answer, or the
+        # daemon had never replied. Those need completely different fixes, and
+        # the log was the only place anyone would look first.
         logger.log(
             logging.WARNING if over_target else logging.INFO,
-            "turn complete conversation=%s status=%s elapsed_ms=%d target_ms=%d",
+            "turn complete conversation=%s status=%s reason=%s elapsed_ms=%d target_ms=%d",
             conversation_id,
             status,
+            escalation_reason or "-",
             elapsed_ms,
             int(RESPONSE_TARGET_SECONDS * 1000),
         )

@@ -881,7 +881,9 @@ def report_ai_provider(default_model: str = "llama3.2") -> None:
     if not name:
         return
 
-    info(f"Assistant: {labels.get(name, name)}")
+    budget = str(dependencies.get("ai_timeout_seconds") or "")
+    detail = f" ({budget}s budget per question)" if budget else ""
+    info(f"Assistant: {labels.get(name, name)}{detail}")
     # The advisor is no longer a destination, so "not ready" is now worth
     # saying loudly: the assistant will decline to answer rather than quietly
     # producing template text, and the reader is the one who can fix it.

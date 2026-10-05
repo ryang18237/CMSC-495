@@ -372,7 +372,7 @@ def test_an_answer_in_the_reasoning_field_is_still_an_answer():
 
 
 def test_a_stopped_daemon_is_explained_rather_than_called_an_outage(monkeypatch):
-    """"The model is not running" is fixable in a minute. Say which minute.
+    """ "The model is not running" is fixable in a minute. Say which minute.
 
     The generic outage message gave the reader nothing to act on, so a stopped
     daemon read as a broken product.
@@ -398,3 +398,18 @@ def test_a_running_model_that_fails_is_not_blamed_on_the_daemon(monkeypatch):
     result = service.handle_provider_failure(AIProviderError("Provider returned 500."))
 
     assert "not running" not in result.text
+
+
+def test_the_effective_timeout_is_reported_not_inferred():
+    """A turn that died at the old 8s default on a 120s machine means stale code.
+
+    That is only diagnosable if the live number is visible, so /health carries
+    the budget the provider will actually honour rather than the default
+    someone would guess from the source.
+    """
+    local = AIIntegrationService(provider=OllamaProvider())
+    hosted = AIIntegrationService(provider=OpenAIProvider())
+
+    assert local.provider_timeout_seconds == get_settings().ollama_timeout_seconds
+    assert hosted.provider_timeout_seconds == get_settings().ai_timeout_seconds
+    assert local.provider_timeout_seconds > hosted.provider_timeout_seconds
