@@ -21,6 +21,11 @@ illustrative content rather than guidance from any agency.
 
 ---
 
+## Demonstrating this
+
+Presenter scripts, a pre-flight checklist and what to say if something fails
+live are in [docs/demo/](docs/demo/).
+
 ## Quick start
 
 Requires **Python 3.10+** and **Node 18+**. No database to install, no file to

@@ -35,6 +35,7 @@ import signal
 import socket
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -769,6 +770,13 @@ def _pull_model(executable: str, model: str) -> bool:
 
 
 def _agreed(question: str, assume_yes: bool) -> bool:
+    """Ask, defaulting to yes.
+
+    The assistant has no fallback any more (ADR 0013), so declining leaves the
+    main feature switched off. Pressing Return should therefore get you a
+    working platform -- but it is still a question, because installing
+    software is a decision about someone's computer and "n" has to mean n.
+    """
     if assume_yes:
         return True
     if not sys.stdin.isatty():
@@ -776,11 +784,22 @@ def _agreed(question: str, assume_yes: bool) -> bool:
         # a decision this script gets to make for someone.
         return False
     try:
-        answer = input(f"{question} [y/N] ").strip().lower()
+        answer = input(f"{question} [Y/n] ").strip().lower()
     except (EOFError, KeyboardInterrupt):
         print()
         return False
-    return answer in ("y", "yes")
+    return answer in ("", "y", "yes")
+
+
+def _show_progress(block: int, block_size: int, total: int) -> None:
+    """A silent multi-hundred-megabyte download is indistinguishable from a hang."""
+    if total <= 0:
+        return
+    done = min(block * block_size, total)
+    share = done / total
+    bar = "#" * int(share * 30)
+    sys.stdout.write(f"\r    [{bar:<30}] {share:4.0%}  of {total / 1_048_576:.0f} MB")
+    sys.stdout.flush()
 
 
 def _install_ollama(assume_yes: bool) -> str | None:
@@ -795,8 +814,10 @@ def _install_ollama(assume_yes: bool) -> str | None:
         installer = Path(os.environ.get("TEMP") or ".") / "OllamaSetup.exe"
         step("Downloading the Ollama installer")
         try:
-            urllib.request.urlretrieve(OLLAMA_WINDOWS_INSTALLER, installer)
+            urllib.request.urlretrieve(OLLAMA_WINDOWS_INSTALLER, installer, _show_progress)
+            print()
         except (urllib.error.URLError, OSError) as error:
+            print()
             warn(f"Download failed: {error}")
             return None
         step("Running the installer")
@@ -852,6 +873,40 @@ def ensure_local_model(args: argparse.Namespace) -> None:
     if model not in models and not _pull_model(executable, model):
         return
     info(f"Local model ready: {model}")
+    _warm_up(model)
+
+
+def _warm_up(model: str) -> None:
+    """Load the weights now, in the background, so the first question is not slow.
+
+    Ollama loads a model on first use and keeps it resident for a few minutes.
+    Without this the first question anyone asks -- which, in a demonstration,
+    is the one everybody is watching -- pays for the load and looks like the
+    platform is struggling. Started on a daemon thread and never waited on: if
+    it fails, the only cost is that the first real question is slow again.
+    """
+
+    def run() -> None:
+        body = json.dumps(
+            {
+                "model": model,
+                "messages": [{"role": "user", "content": "hi"}],
+                "max_tokens": 1,
+            }
+        ).encode()
+        request = urllib.request.Request(
+            f"{OLLAMA_URL}/v1/chat/completions",
+            data=body,
+            headers={"Content-Type": "application/json", "Authorization": "Bearer ollama"},
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=_PULL_TIMEOUT):
+                pass
+        except (urllib.error.URLError, OSError):
+            pass
+
+    threading.Thread(target=run, daemon=True).start()
+    info("Loading the model in the background -- the first answer will be quick.")
 
 
 # How the assistant answers is the thing people most often get wrong about

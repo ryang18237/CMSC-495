@@ -12,6 +12,14 @@ if %errorlevel% neq 0 (
   exit /b 1
 )
 
+echo.
+echo Starting SkillbridgeAI.
+echo.
+echo First run on this computer takes a few minutes: it sets up the
+echo environment and offers to install Ollama, which runs the language
+echo model locally. Press Return at the prompt to accept.
+echo.
+
 python run.py
 echo.
 echo Stopped.
