@@ -131,11 +131,15 @@ def test_only_the_adapter_touches_the_legacy_personnel_table() -> None:
     problems: list[str] = []
 
     for path in _source_files():
-        relative = str(path.relative_to(APP))
+        # as_posix(), not str(): on Windows str() gives "modules\\customer_data"
+        # and the allow-list below is written with forward slashes, so the
+        # adapter failed to match its own rule and reported itself. The suite
+        # passed on Linux CI and failed for everyone developing on Windows.
+        relative = path.relative_to(APP).as_posix()
         if any(relative.startswith(allowed) for allowed in _LEGACY_ALLOWED):
             continue
         if LEGACY_MODEL in path.read_text(encoding="utf-8"):
-            problems.append(str(path.relative_to(APP.parent)))
+            problems.append(path.relative_to(APP.parent).as_posix())
 
     assert not problems, (
         f"{LEGACY_MODEL} is referenced outside the Customer Data Adapter:\n  "
@@ -338,3 +342,47 @@ def test_every_component_has_a_service_entry_point() -> None:
         if not (MODULES / component / filename).is_file()
     ]
     assert not missing, "Component entry points are missing:\n  " + "\n  ".join(missing)
+
+
+# ---------------------------------------------------------------------------
+# Portability: rules that only break on somebody else's operating system
+# ---------------------------------------------------------------------------
+_REPO = APP.parent.parent
+
+
+def test_every_text_file_read_names_its_encoding() -> None:
+    """`read_text()` with no encoding means "whatever this machine prefers".
+
+    On Linux that is UTF-8; on Windows it is cp1252, so a file containing an
+    em dash raises UnicodeDecodeError there and nowhere else. Our CI is Linux
+    only, so three contract tests passed on every push while failing for any
+    teammate developing on Windows. The build cannot catch that by running
+    the tests, so it catches it by reading them.
+
+    Parsed rather than grepped, so a mention in a comment or a docstring --
+    including this one -- is not a finding.
+    """
+    problems: list[str] = []
+    searched = [
+        *sorted((_REPO / "backend" / "tests").rglob("*.py")),
+        *sorted((_REPO / "backend" / "app").rglob("*.py")),
+        *sorted((_REPO / "scripts").glob("*.py")),
+    ]
+
+    for path in searched:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            name = getattr(node.func, "attr", None) or getattr(node.func, "id", None)
+            if name not in ("read_text", "write_text", "open"):
+                continue
+            if any(keyword.arg == "encoding" for keyword in node.keywords):
+                continue
+            if name == "open" and not isinstance(node.func, ast.Name):
+                continue  # urlopen and friends take no encoding
+            problems.append(f"{path.relative_to(_REPO).as_posix()}:{node.lineno}: {name}()")
+
+    assert not problems, "Text file access without an explicit encoding:\n  " + "\n  ".join(
+        problems
+    )

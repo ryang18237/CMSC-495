@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session  # noqa: E402
 
 from app import rate_limit  # noqa: E402
 from app.bootstrap import AGENT_ID, CUSTOMER_ID, CUSTOMER_TWO_ID, create_schema, seed  # noqa: E402
+from app.config import get_settings  # noqa: E402
 from app.db import Base, SessionLocal, engine  # noqa: E402
 from app.main import app  # noqa: E402
 from app.modules.cache.service import reset_cache  # noqa: E402
@@ -47,6 +48,29 @@ def _database() -> Iterator[None]:
     Base.metadata.drop_all(bind=engine)
     if os.path.exists(_TMP_DB):
         os.remove(_TMP_DB)
+
+
+@pytest.fixture(autouse=True)
+def _no_local_daemon(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Point the local-model probe at a closed port for the whole suite.
+
+    Readiness is a question about the machine (ADR 0011), which means the
+    answer differs between a developer running Ollama and CI, which runs
+    nothing. Three tests asserted the exact set of offered providers and
+    passed on Linux CI while failing on any machine with the daemon up --
+    the suite was reporting on the developer's laptop, not on the code.
+
+    127.0.0.1:1 refuses instantly, so `health()` returns "unavailable"
+    through the real code path rather than a stubbed one. A test that wants a
+    reachable daemon overrides the base url (`stub_ollama`) or the health
+    method, and its own monkeypatch wins because it is applied later.
+    """
+    from app.modules.ai_integration.providers.ollama_provider import reset_probe_cache
+
+    monkeypatch.setattr(get_settings(), "ollama_base_url", "http://127.0.0.1:1")
+    reset_probe_cache()
+    yield
+    reset_probe_cache()
 
 
 @pytest.fixture(autouse=True)

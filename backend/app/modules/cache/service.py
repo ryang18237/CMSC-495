@@ -90,7 +90,12 @@ class InMemoryCache(CacheService):
         if entry is None:
             self._stats.misses += 1
             return None
-        if entry.expires_at < time.monotonic():
+        # <=, not <: an entry written with ttl=0 is expired immediately, by
+        # definition. With a strict < that only holds if the clock has ticked
+        # between the write and the read, and Windows' monotonic clock has a
+        # ~16 ms granularity -- so a zero-TTL entry stayed live there and
+        # expired on Linux. Correctness should not depend on timer resolution.
+        if entry.expires_at <= time.monotonic():
             del self._entries[key]
             self._stats.evictions += 1
             self._stats.misses += 1

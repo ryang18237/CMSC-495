@@ -8,7 +8,7 @@ uploads the full HTML reports as the `backend-coverage` and
 
 | Suite | Tests | Lines | Branches | Floor enforced in CI |
 | --- | ---: | ---: | ---: | --- |
-| Backend — pytest against PostgreSQL 16 | 284 | **94.6%** | **84.0%** | 90% combined (`.coveragerc`) |
+| Backend — pytest against PostgreSQL 16 | 285 | **94.6%** | **84.0%** | 90% combined (`.coveragerc`) |
 | Frontend — Vitest + Testing Library | 43 | **89.7%** | **85.4%** | 80% lines, 75% branches (`vite.config.js`) |
 | End-to-end — `scripts/smoke_test.sh` | 11 steps | — | — | Must pass |
 
@@ -93,6 +93,9 @@ behaviour that line counts cannot show:
 - **No canned answers reach a member** — the built-in advisor is never listed,
   never resolved by `auto`, and a stopped daemon is explained rather than
   papered over.
+- **Portability** — every text read names its encoding, parsed from source.
+  CI is Linux only, and three contract tests passed on every push while
+  failing for anyone developing on Windows.
 - **Model choice** — a provider without a key can never be selected, and no
   key ever appears in an API response.
 - **Concurrency** — the shared connection pool is created once under twenty
