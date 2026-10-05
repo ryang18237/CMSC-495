@@ -24,6 +24,7 @@ from app.modules.ai_integration.providers.ollama_provider import (
     installed_models,
     reset_probe_cache,
 )
+from app.modules.ai_integration.providers.openai_provider import MAX_TOKENS, OpenAIProvider
 from app.modules.ai_integration.service import (
     available_providers,
     build_provider,
@@ -307,3 +308,57 @@ def test_a_provider_failure_is_written_to_the_log(caplog):
 
     assert "ollama" in caplog.text
     assert "did not respond within 120s" in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# The reply length cap: the second failure that looked like "the service is down"
+# ---------------------------------------------------------------------------
+def test_the_length_cap_is_sent_under_the_name_this_server_reads():
+    """Ollama reads `max_tokens`. OpenAI's newer name is silently ignored.
+
+    This is the whole bug in one assertion. An unrecognised field is dropped
+    rather than refused, so the wrong name does not fail -- it removes the cap
+    and lets a one-paragraph question generate until the model's own 4096-token
+    default, which on a CPU is minutes. The turn then times out and the member
+    is handed to a counsellor, which reads as a broken assistant.
+    """
+    seen = {}
+
+    def handler(request):
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json=_answer_body())
+
+    _provider(handler).generate(PROMPT)
+
+    assert seen["body"]["max_tokens"] == MAX_TOKENS
+    assert "max_completion_tokens" not in seen["body"]
+
+
+def test_a_hosted_provider_still_uses_the_name_openai_requires():
+    """OpenAI rejects the old name on its newer models, so the two must differ."""
+    assert OpenAIProvider.token_limit_field == "max_completion_tokens"
+    assert OllamaProvider.token_limit_field == "max_tokens"
+
+
+def test_an_answer_in_the_reasoning_field_is_still_an_answer():
+    """Some local models leave `content` empty and put the reply in `reasoning`.
+
+    Escalating there would hand a member to a person while holding the answer
+    they asked for.
+    """
+
+    def handler(request):
+        return httpx.Response(
+            200,
+            json={
+                "model": MODEL,
+                "choices": [
+                    {
+                        "message": {"content": "", "reasoning": "Security+ is the next step."},
+                        "finish_reason": "stop",
+                    }
+                ],
+            },
+        )
+
+    assert _provider(handler).generate(PROMPT).text == "Security+ is the next step."

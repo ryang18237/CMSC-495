@@ -43,6 +43,14 @@ _MARKER_TRIM = " \t\n\r.!\"'*`"
 class OpenAIProvider(AIProvider):
     name = "openai"
 
+    # OpenAI renamed the cap to `max_completion_tokens` and rejects the old
+    # name on its newer models. Other servers that speak this wire format did
+    # not follow, and an unrecognised field is *ignored* rather than refused --
+    # so naming it wrongly does not fail loudly, it silently removes the cap
+    # and lets a reply run until the model stops on its own. Each provider
+    # names the field its own server reads.
+    token_limit_field = "max_completion_tokens"
+
     def __init__(self, client: httpx.Client | None = None) -> None:
         settings = get_settings()
         self._api_key = settings.openai_api_key
@@ -68,7 +76,7 @@ class OpenAIProvider(AIProvider):
         """
         return {
             "model": self._model,
-            "max_completion_tokens": MAX_TOKENS,
+            self.token_limit_field: MAX_TOKENS,
             "messages": [{"role": "system", "content": prompt.system}, *prompt.messages],
         }
 
@@ -123,6 +131,11 @@ class OpenAIProvider(AIProvider):
         # UNSUPPORTED_TOPIC marker means to the rest of the platform.
         if not text and message.get("refusal"):
             return UNSUPPORTED_MARKER
+        # A reasoning model can put the whole answer in `reasoning` and leave
+        # `content` empty. Throwing that away and escalating would hand a
+        # member to a counsellor while holding the answer they asked for.
+        if not text:
+            text = str(message.get("reasoning") or message.get("reasoning_content") or "").strip()
         if not text:
             raise AIProviderError("Provider returned an empty response.", retryable=True)
         if text.strip(_MARKER_TRIM).upper() == UNSUPPORTED_MARKER:

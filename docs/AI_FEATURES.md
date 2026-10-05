@@ -99,6 +99,21 @@ Either way the platform finds the daemon by itself — `run.py` prints `Assistan
 Ollama and the next turn falls back to the built-in advisor without an error;
 start it again and answers come from the model again, with no restart.
 
+**One field name, two servers.** OpenAI renamed the reply-length cap to
+`max_completion_tokens` and rejects the old name on its newer models; Ollama
+reads `max_tokens` and *ignores* fields it does not recognise. Sent under the
+wrong name the cap does not fail — it disappears, and a one-paragraph question
+generates until the model's own 4096-token default, which on a CPU is minutes.
+The turn then times out and the member is escalated, which looks like a broken
+assistant rather than a slow one. Each provider names the field its own server
+reads (`token_limit_field`), pinned by
+`test_the_length_cap_is_sent_under_the_name_this_server_reads`.
+
+`python scripts/check_local_model.py` runs the same request the platform runs
+and prints the status, the timing and the body, instead of turning a failure
+into a fallback message. It is the first thing to run when the assistant says
+it cannot be reached.
+
 Any model you have pulled works — name it in `OLLAMA_MODEL`. A model that is
 *not* pulled is reported `degraded` and never offered, because offering one
 would turn every conversation into a 404.

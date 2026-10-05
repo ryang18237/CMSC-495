@@ -56,6 +56,15 @@ def reset_probe_cache() -> None:
 class OllamaProvider(OpenAIProvider):
     name = "ollama"
 
+    # Ollama's OpenAI shim reads `max_tokens`, not OpenAI's newer
+    # `max_completion_tokens`, and ignores fields it does not know rather than
+    # rejecting them. Sent under the wrong name the cap simply vanishes: the
+    # reply runs to the model's own `num_predict` default of 4096 tokens,
+    # which on a CPU is minutes of generation for a question that wanted a
+    # paragraph -- so the turn times out and the member is escalated instead
+    # of answered. The symptom is a dead assistant; the cause is one key name.
+    token_limit_field = "max_tokens"
+
     def __init__(self, client: httpx.Client | None = None) -> None:
         super().__init__(client=client)
         settings = get_settings()
