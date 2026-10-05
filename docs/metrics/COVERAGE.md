@@ -8,20 +8,20 @@ uploads the full HTML reports as the `backend-coverage` and
 
 | Suite | Tests | Lines | Branches | Floor enforced in CI |
 | --- | ---: | ---: | ---: | --- |
-| Backend — pytest against PostgreSQL 16 | 251 | **94.6%** | **84.0%** | 90% combined (`.coveragerc`) |
+| Backend — pytest against PostgreSQL 16 | 286 | **94.6%** | **84.0%** | 90% combined (`.coveragerc`) |
 | Frontend — Vitest + Testing Library | 43 | **89.7%** | **85.4%** | 80% lines, 75% branches (`vite.config.js`) |
 | End-to-end — `scripts/smoke_test.sh` | 11 steps | — | — | Must pass |
 
-Backend combined line-and-branch coverage is 92.9%.
+Backend combined line-and-branch coverage is 93.0%.
 
 ## Backend, by component
 
 | Component | Lines | Branches |
 | --- | ---: | ---: |
 | Conversation Management | 99.0% | 94.4% |
-| Customer Data Adapter | 93.8% | 87.8% |
+| Customer Data Adapter | 93.9% | 87.8% |
 | Knowledge Base | 91.5% | 80.0% |
-| AI Integration | 95.6% | 86.5% |
+| AI Integration | 95.9% | 86.9% |
 | Response Validation | 96.2% | 90.9% |
 | Escalation | 95.5% | 81.6% |
 | Feedback | 97.2% | 100.0% |
@@ -29,7 +29,7 @@ Backend combined line-and-branch coverage is 92.9%.
 | Cache | 95.2% | 100.0% |
 | Monitoring | 93.6% | 66.7% |
 | API layer | 97.0% | 83.3% |
-| Shared (config, schemas, errors, security, data) | 93.3% | 78.0% |
+| Shared (config, schemas, errors, security, data) | 93.6% | 78.0% |
 
 **Where coverage is thin, and why it matters or does not.** The Learning
 Analytics Worker is lowest: its tests drive the patterns the demo produces, but
@@ -90,6 +90,12 @@ behaviour that line counts cannot show:
   are previewed, never saved unasked.
 - **Usable with no key** — a full conversation with every key unset still
   returns a personalised answer.
+- **No canned answers reach a member** — the built-in advisor is never listed,
+  never resolved by `auto`, and a stopped daemon is explained rather than
+  papered over.
+- **Portability** — every text read names its encoding, parsed from source.
+  CI is Linux only, and three contract tests passed on every push while
+  failing for anyone developing on Windows.
 - **Model choice** — a provider without a key can never be selected, and no
   key ever appears in an API response.
 - **Concurrency** — the shared connection pool is created once under twenty

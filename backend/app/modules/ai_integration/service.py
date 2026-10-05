@@ -4,6 +4,7 @@ Owns prompt construction, the retry policy and the fallback path. The rest of
 the application talks to this service and never to a provider directly.
 """
 
+import logging
 import time
 from dataclasses import dataclass
 
@@ -18,7 +19,10 @@ from app.modules.ai_integration.contracts import (
 from app.modules.ai_integration.providers.anthropic_provider import AnthropicProvider
 from app.modules.ai_integration.providers.base import AIProvider
 from app.modules.ai_integration.providers.builtin import MODEL, BuiltInAdvisor
+from app.modules.ai_integration.providers.ollama_provider import OllamaProvider
 from app.modules.ai_integration.providers.openai_provider import OpenAIProvider
+
+logger = logging.getLogger("app.ai")
 
 FALLBACK_MESSAGE = (
     "I'm sorry -- I can't reach the assistant service right now, and I'd rather not "
@@ -26,21 +30,52 @@ FALLBACK_MESSAGE = (
     "counsellor available to pick this up for you."
 )
 
+# The local model is the only thing that answers members, so "it is not
+# running" is now a first-class outcome rather than a generic outage. It is
+# also the one failure the reader can fix in a minute, and the generic message
+# gave them nothing to act on -- it read as a broken product rather than a
+# stopped service.
+LOCAL_MODEL_DOWN_MESSAGE = (
+    "The local language model is not running, so I cannot answer you properly "
+    "yet -- and I would rather say that than guess at your education or career "
+    "plans. Start it and ask me again: run `ollama serve` in a terminal, or just "
+    "restart the platform with `python run.py`, which starts it for you. A career "
+    "counsellor is available in the meantime."
+)
+
+# Written for a small local model, which is a different reader from a frontier
+# one. The previous wording said "answer only from the material provided" and
+# "if the question falls outside the provided material, reply
+# UNSUPPORTED_TOPIC" -- two instructions a 3B model follows literally and
+# eagerly. Paired with a thin set of facts it refused most questions, and a
+# career service whose assistant mostly says "I can't help with that" is not a
+# career service. The scope limit is now stated as a subject boundary
+# (education and careers for service members) rather than as a sources limit,
+# and the escape hatch is explicitly narrowed to questions about another
+# subject entirely.
 SYSTEM_INSTRUCTION = (
-    "You are the assistant for SkillBridge AI, a free education and professional "
+    "You are the assistant for SkillbridgeAI, a free education and professional "
     "development service for military members and veterans. "
-    "Answer only from the knowledge base excerpts and the member facts provided "
-    "below. Ground your suggestions in the training the member has already "
-    "completed -- that is the point of the service. "
-    "Be concise, practical and respectful. "
+    "Answer questions about education, training, certifications, degrees, "
+    "apprenticeships, resumes, job hunting and the transition to civilian work. "
+    "Use the member facts and knowledge base excerpts below first and build on "
+    "what the member has already completed -- that is the point of the service. "
+    "Where their record does not cover the question, answer from general "
+    "knowledge of the field and say plainly that it is general guidance rather "
+    "than something drawn from their record. "
+    "Give a real answer: name specific certifications, programmes or steps. "
+    "Be concise, practical and respectful -- a short paragraph is usually right. "
     "You provide information and suggestions only. You must never make an "
     "eligibility determination, promise admission, funding or employment, or state "
     "that you have taken an action such as enrolling, applying or approving "
-    "anything -- a human career counsellor does those. "
+    "anything -- a human career counsellor does those, and you should suggest one "
+    "when a decision is needed. "
     "Never ask for or repeat a password, financial account number or government "
     "identification number. "
-    "If the question falls outside the provided material, or the member needs a "
-    "decision you cannot make, reply with exactly UNSUPPORTED_TOPIC and nothing else."
+    "Reply with exactly UNSUPPORTED_TOPIC and nothing else ONLY if the question is "
+    "about a different subject altogether -- general trivia, politics, medical or "
+    "legal advice, or anything unrelated to education and careers. Do not use it "
+    "merely because the member's record is thin or the question is broad."
 )
 
 
@@ -56,23 +91,70 @@ def shutdown() -> None:
     reset_shared_http_client()
 
 
-# Every provider the platform knows, with the name a member sees. The built-in
-# advisor needs no key and is therefore always available, which is what lets
-# the platform be installed and used with no sign-ups and nothing to configure.
+# Every provider the platform knows, with the name a member sees.
 _PROVIDERS: dict[str, tuple[str, type[AIProvider]]] = {
-    "builtin": ("Built-in advisor", BuiltInAdvisor),
+    "ollama": ("Local model", OllamaProvider),
     "anthropic": ("Claude", AnthropicProvider),
     "openai": ("ChatGPT", OpenAIProvider),
+    "builtin": ("Built-in advisor", BuiltInAdvisor),
 }
 
-# `mock` was this provider's name while it was a test double. Configuration
-# files and CI still say it, so it keeps working.
-_ALIASES = {"mock": "builtin", "": "builtin"}
+# The built-in advisor is not one of them. It routes on topic keywords and
+# composes an answer from templates, which is a useful stand-in for a language
+# model in a test -- deterministic, instant, free, no daemon -- and a poor
+# substitute for one in front of a member. Offered alongside a real model it
+# gets chosen by accident, and the member reads canned text as the product's
+# best effort; offered as a silent fallback it turns "the model is not running"
+# into an answer that looks deliberate. Neither failure is visible from the
+# outside, which is what makes them expensive.
+#
+# So it stays in the codebase and leaves the runtime: never listed to a member,
+# never resolved by `auto`, reachable only by naming it outright in
+# AI_PROVIDER, which is what CI does. Members get a real language model or an
+# honest explanation of why they cannot.
+_MEMBER_FACING = ("ollama", "anthropic", "openai")
+TEST_ONLY_PROVIDER = "builtin"
+
+# `mock` was this provider's name while it was a test double, which is again
+# all it is. Configuration files and CI still say it, so it keeps working.
+_ALIASES = {"mock": "builtin", "": "auto"}
+
+# What "auto" tries, in order. A local model first: it is the only option that
+# is both a real language model and free of keys, accounts and cost, so it is
+# what someone who has configured nothing should get.
+_AUTO_ORDER = ("ollama", "anthropic", "openai")
+
+AUTO = "auto"
 
 
 def _canonical(name: str) -> str:
     cleaned = name.strip().lower()
     return _ALIASES.get(cleaned, cleaned)
+
+
+def resolve_auto() -> str:
+    """The provider `auto` means on this machine, right now.
+
+    Resolved on each call rather than at import: starting Ollama should be
+    noticed without restarting the platform.
+
+    With nothing reachable this still answers "ollama" rather than falling
+    back. The caller then fails against a provider that is genuinely the one
+    the platform wants, and the member is told the local model is not running
+    -- which is true, and fixable -- instead of being handed template text
+    that reads like the assistant's real opinion.
+    """
+    for provider_id in _AUTO_ORDER:
+        _, provider_class = _PROVIDERS[provider_id]
+        if provider_class().health() == "ok":
+            return provider_id
+    return _AUTO_ORDER[0]
+
+
+def configured_provider() -> str:
+    """The provider configuration asks for, with `auto` already resolved."""
+    configured = _canonical(get_settings().ai_provider)
+    return resolve_auto() if configured == AUTO else configured
 
 
 @dataclass(frozen=True)
@@ -86,11 +168,13 @@ class ProviderOption:
 def build_provider(name: str | None = None) -> AIProvider:
     """Provider factory. Selection is configuration, or a member's choice.
 
-    An unknown name falls back to the built-in advisor rather than failing:
-    a typo in configuration should degrade the answers, not the platform.
+    An unknown name resolves the same way `auto` does rather than failing: a
+    typo in configuration should not take the platform down.
     """
-    selected = _canonical(name or get_settings().ai_provider)
-    _, provider_class = _PROVIDERS.get(selected, _PROVIDERS["builtin"])
+    selected = _canonical(name) if name else configured_provider()
+    if selected == AUTO or selected not in _PROVIDERS:
+        selected = resolve_auto()
+    _, provider_class = _PROVIDERS[selected]
     return provider_class()
 
 
@@ -99,6 +183,7 @@ def _model_for(provider_id: str) -> str:
     return {
         "anthropic": settings.anthropic_model,
         "openai": settings.openai_model,
+        "ollama": settings.ollama_model,
     }.get(provider_id, MODEL)
 
 
@@ -110,11 +195,11 @@ def available_providers() -> list[ProviderOption]:
     """
     ready = [
         provider_id
-        for provider_id, (_, provider_class) in _PROVIDERS.items()
-        if provider_class().health() == "ok"
+        for provider_id in _MEMBER_FACING
+        if _PROVIDERS[provider_id][1]().health() == "ok"
     ]
-    configured = _canonical(get_settings().ai_provider)
-    default = configured if configured in ready else "builtin"
+    configured = configured_provider()
+    default = configured if configured in ready else (ready[0] if ready else "")
     return [
         ProviderOption(
             provider_id=provider_id,
@@ -138,6 +223,11 @@ class AIIntegrationService:
     @property
     def provider_name(self) -> str:
         return self._provider.name
+
+    @property
+    def provider_timeout_seconds(self) -> float:
+        """The request budget this provider will actually honour."""
+        return float(getattr(self._provider, "_timeout", get_settings().ai_timeout_seconds))
 
     def provider_health(self) -> str:
         try:
@@ -181,7 +271,7 @@ class AIIntegrationService:
                     break
                 # A retry that starts after the budget can only finish after the
                 # member has already waited too long. Hand them to a person now.
-                if time.monotonic() - started >= settings.ai_retry_budget_seconds:
+                if time.monotonic() - started >= self._provider.retry_budget_seconds:
                     break
                 time.sleep(min(0.2 * (2**attempt), 1.0))
                 continue
@@ -220,11 +310,21 @@ class AIIntegrationService:
         that quoted a response excerpt would write member data into the log, so
         the length is capped here where every provider passes through.
         """
+        detail = str(error)[:ERROR_DETAIL_LIMIT]
+        unreachable = self._provider.name == "ollama" and self._provider.health() != "ok"
+        message = LOCAL_MODEL_DOWN_MESSAGE if unreachable else FALLBACK_MESSAGE
+        # The member is told only that a person will pick it up. Whoever runs
+        # the server needs the actual reason, and until now it was recorded on
+        # the result and then dropped -- which made "assistant service
+        # unavailable" impossible to diagnose from the logs.
+        logger.warning(
+            "ai provider %s failed after %dms: %s", self._provider.name, latency_ms, detail
+        )
         return AIResult(
             outcome=AIOutcome.PROVIDER_FAILURE,
-            text=FALLBACK_MESSAGE,
+            text=message,
             model=self._provider.name,
             sources=[],
             latency_ms=latency_ms,
-            error_detail=str(error)[:ERROR_DETAIL_LIMIT],
+            error_detail=detail,
         )

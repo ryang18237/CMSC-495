@@ -108,6 +108,12 @@ _EXPERIENCE_TOPIC = (
     "background",
     "what have i",
     "what do i have",
+    # The ways people actually ask what the service knows about them. The
+    # classifier already recognised these; the advisor did not, so the
+    # question reached it and was declined.
+    "what do you have",
+    "what do you know",
+    "on file",
     "my profile",
     "my record",
     "qualified",
@@ -138,6 +144,20 @@ _TRANSITION_TOPIC = (
     "terminal leave",
 )
 _APPRENTICESHIP_TOPIC = ("apprentice", "trade", "on the job", "journeyman", "union")
+
+# Any topic this service covers. Used only to decide whether an empty profile
+# deserves "tell me about yourself" rather than a decline: a career question
+# with nothing on file is answerable by asking, while "what is the capital of
+# France?" is still not our subject.
+_ANY_TOPIC = (
+    _CREDENTIAL_TOPIC
+    + _NEXT_STEP_TOPIC
+    + _DEGREE_TOPIC
+    + _RESUME_TOPIC
+    + _EXPERIENCE_TOPIC
+    + _TRANSITION_TOPIC
+    + _APPRENTICESHIP_TOPIC
+)
 
 # Ordered most specific first, because a question about a certification exam
 # also mentions studying.
@@ -192,6 +212,20 @@ _TOPIC_REPLIES: list[tuple[tuple[str, ...], str]] = [
 
 
 MODEL = "skillbridge-advisor-v3"
+
+# What to say when the profile is empty. The advice this service exists to
+# give is advice about one person's position, and with nothing on file there
+# is no position to advise on. Asking for the three or four things that would
+# change that is more honest, and more useful, than a generic answer.
+EMPTY_PROFILE_REPLY = (
+    "I do not have anything on your profile yet, so anything I said about your "
+    "next step would be a guess rather than advice about you. Open the "
+    "My profile tab and add what you have: certifications or licences you hold, "
+    "courses you have completed, any degree or coursework, and roles you have "
+    "worked. Three or four entries is enough. Ask me again afterwards and the "
+    "answer will be built from your own record -- or ask for a counsellor at "
+    "any point and a person will pick it up."
+)
 
 
 def _fact(system: str, label: str) -> list[str]:
@@ -359,11 +393,17 @@ class BuiltInAdvisor(AIProvider):
 
     # Tried in order. A question about a degree mentions "certification" often
     # enough that the degree shape has to come first.
+    # Reading the profile back is last, not first. "Given my background, what
+    # should I do next?" mentions the profile but is asking for a
+    # recommendation, and answering it with a list of what the member already
+    # told us is the single most annoying way to be unhelpful. The read-back
+    # wins only when nothing else matches -- which is exactly when the
+    # question really was "what do you have on me?".
     _ANSWERS: tuple[tuple[tuple[str, ...], Callable[[_Facts], str]], ...] = (
-        (_EXPERIENCE_TOPIC, _answer_profile),
         (_DEGREE_TOPIC, _answer_degree),
         (_CREDENTIAL_TOPIC + _NEXT_STEP_TOPIC, _answer_next_step),
         (_RESUME_TOPIC, _answer_resume),
+        (_EXPERIENCE_TOPIC, _answer_profile),
     )
 
     def generate(self, prompt: Prompt) -> ProviderResponse:
@@ -406,7 +446,10 @@ class BuiltInAdvisor(AIProvider):
         """
         facts = _facts(system)
         if not facts.has_anything:
-            return ""
+            # Nothing to reason from. Saying so, and saying what would fix it,
+            # is more use than a paragraph of general advice that reads as
+            # though it were about them.
+            return EMPTY_PROFILE_REPLY if _mentions(lowered, _ANY_TOPIC) else ""
 
         for topic, compose in self._ANSWERS:
             if _mentions(lowered, topic):

@@ -23,6 +23,18 @@ APP_DIR = REPO_ROOT / "backend" / "app"
 _PARAM = re.compile(r"\{[^}]+\}")
 
 
+def _read(path: Path) -> str:
+    """Read a source or documentation file as UTF-8, on every platform.
+
+    `Path.read_text()` uses the platform's preferred encoding, which on
+    Windows is cp1252 -- so a file holding an em dash, a curly quote or any
+    other non-ASCII character raises UnicodeDecodeError there and reads fine
+    on Linux. CI is Linux, so the whole suite passed while these same tests
+    failed for anyone on Windows. These files are UTF-8; say so.
+    """
+    return path.read_text(encoding="utf-8")
+
+
 def _normalise(path: str) -> str:
     return _PARAM.sub("{}", path)
 
@@ -30,7 +42,7 @@ def _normalise(path: str) -> str:
 def _documented_routes() -> set[tuple[str, str]]:
     """Rows of the endpoint summary table: | METHOD | `/path` | ... |"""
     row = re.compile(r"^\|\s*(GET|POST|PATCH|PUT|DELETE)\s*\|\s*`([^`]+)`\s*\|", re.M)
-    return {(method, _normalise(path)) for method, path in row.findall(API_DOC.read_text())}
+    return {(method, _normalise(path)) for method, path in row.findall(_read(API_DOC))}
 
 
 def _implemented_routes() -> set[tuple[str, str]]:
@@ -61,12 +73,12 @@ def test_every_documented_route_exists() -> None:
 
 def test_every_error_code_is_documented() -> None:
     """A client can only handle a code it has been told about."""
-    source = "\n".join(path.read_text() for path in APP_DIR.rglob("*.py"))
+    source = "\n".join(_read(path) for path in APP_DIR.rglob("*.py"))
     raised = set(re.findall(r'code="([A-Z][A-Z_]+)"', source))
     # Codes the shared handlers in errors.py produce for framework failures.
-    raised |= set(re.findall(r'"([A-Z][A-Z_]{4,})"', (APP_DIR / "errors.py").read_text()))
+    raised |= set(re.findall(r'"([A-Z][A-Z_]{4,})"', _read(APP_DIR / "errors.py")))
 
-    document = API_DOC.read_text()
+    document = _read(API_DOC)
     undocumented = sorted(code for code in raised if f"`{code}`" not in document)
     assert not undocumented, f"Error codes missing from docs/API.md: {undocumented}"
 

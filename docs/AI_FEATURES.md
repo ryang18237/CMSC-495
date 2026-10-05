@@ -11,8 +11,8 @@ different ways, so they are built differently on purpose.
 | --- | --- | --- |
 | What the member sees | Answers to free-text questions in the chat | "Recommended next steps" panel beside the chat |
 | Technique | A provider interface: a rule-based advisor in process, or a managed language model | Content-based filtering: TF-IDF vectors and cosine similarity |
-| Needs an API key | No — the built-in advisor answers. Claude and ChatGPT are optional | No |
-| Deterministic | Yes on the built-in advisor, no on a managed model | Yes — same profile, same list |
+| Needs an API key | No — a local model answers. Claude and ChatGPT are optional | No |
+| Deterministic | No — it is a language model | Yes — same profile, same list |
 | When it fails | Escalates to a counsellor with `AI_SERVICE_FAILURE` | Falls back to general starting points |
 | Code | `providers/builtin.py`, `providers/anthropic_provider.py`, `providers/openai_provider.py` | `recommender.py` |
 | Endpoint | `POST /api/v1/conversations/{id}/messages` | `GET /api/v1/pathways/recommended` |
@@ -55,7 +55,7 @@ to contain only `model`, `max_tokens`, `system` and `messages`:
 
 No member name, email, member number or identifier is ever included.
 
-### Three providers, no key required
+### Four providers, no key required
 
 The platform works the moment it is installed. Nobody signs up for anything,
 and **no member is ever asked for an API key** — there is nowhere in the
@@ -63,11 +63,21 @@ interface to enter one, by design.
 
 | Provider id | Member sees | Needs | Runs |
 | --- | --- | --- | --- |
-| `builtin` | Built-in advisor | nothing | in process, offline |
+| `builtin` | Built-in advisor — **tests only**, never offered to a member | nothing | in process, offline |
+| `ollama` | Local model | Ollama installed | on this machine |
 | `anthropic` | Claude | `ANTHROPIC_API_KEY` | Anthropic Messages API |
 | `openai` | ChatGPT | `OPENAI_API_KEY` | OpenAI Chat Completions |
 
-`builtin` is the default and is always available. Claude and ChatGPT are
+The shipped default is `AI_PROVIDER=auto`, which means the local model. It
+does **not** fall back to the built-in advisor — that is a test double, and a
+member who reads its template text has no way to tell a stopped daemon from
+real advice. With nothing reachable the assistant says the model is not
+running and names the command that starts it (ADR 0013). CI reaches the
+advisor by naming it outright, `AI_PROVIDER=builtin`, which is the only thing
+that still should.
+
+The local model is free, keyless and private, and it is a real language
+model. Claude and ChatGPT are
 upgrades that **whoever runs the server** configures once, in
 `backend/.env`; every member of that server then benefits without touching a
 key. `GET /api/v1/ai/providers` lists only what the server can actually
@@ -76,9 +86,70 @@ message carries a provider **id** — never a credential. A provider without a
 key can never be selected: the API refuses it with
 `422 AI_PROVIDER_UNAVAILABLE`.
 
-### The built-in advisor
+### A model on your own machine
 
-Not a placeholder. It reads the member's profile — credentials, training,
+This is the recommended way to get real answers, and the only one that is
+simultaneously a language model, free, and free of accounts.
+
+[Ollama](https://ollama.com) runs a model locally and exposes an
+OpenAI-compatible endpoint on port 11434.
+
+There is nothing to do: `run.py` offers to install Ollama if it is missing,
+starts the daemon if it is stopped, and runs `ollama pull llama3.2` if the
+model has never been pulled, before the API comes up. `--no-local-model` skips
+all of it; `--install-local-model` installs without asking, for an unattended
+setup. Doing it by hand — `ollama pull llama3.2` — works exactly the same,
+because the launcher only does what a person would have done.
+
+Either way the platform finds the daemon by itself — `run.py` prints `Assistant: Local model through Ollama` — because
+`AI_PROVIDER=auto` probes `GET /v1/models` on startup and on each turn. Stop
+Ollama and the next turn tells the member the model is not running rather
+than answering from a template; start it again and answers come back, with no
+restart.
+
+**One field name, two servers.** OpenAI renamed the reply-length cap to
+`max_completion_tokens` and rejects the old name on its newer models; Ollama
+reads `max_tokens` and *ignores* fields it does not recognise. Sent under the
+wrong name the cap does not fail — it disappears, and a one-paragraph question
+generates until the model's own 4096-token default, which on a CPU is minutes.
+The turn then times out and the member is escalated, which looks like a broken
+assistant rather than a slow one. Each provider names the field its own server
+reads (`token_limit_field`), pinned by
+`test_the_length_cap_is_sent_under_the_name_this_server_reads`.
+
+`python scripts/check_local_model.py` runs the same request the platform runs
+and prints the status, the timing and the body, instead of turning a failure
+into a fallback message. It is the first thing to run when the assistant says
+it cannot be reached.
+
+Any model you have pulled works — name it in `OLLAMA_MODEL`. A model that is
+*not* pulled is reported `degraded` and never offered, because offering one
+would turn every conversation into a 404.
+
+Three properties make this the right default for a service handling veterans'
+service records:
+
+- **No credential exists.** Ollama requires the `Authorization` header and
+  ignores it, so the provider sends a constant. There is no key to leak, to
+  rotate, or to keep out of git.
+- **Nothing leaves the machine.** The minimised facts go to localhost. For a
+  member's branch, specialty, separation date and training history, that is a
+  materially different privacy position from any hosted model.
+- **No cost and no quota.** Which means a demonstration cannot fail because
+  a free tier ran out.
+
+The trade is quality and speed: a 3B model on a laptop is weaker than Claude
+or ChatGPT and slower per token than either. `AI_TIMEOUT_SECONDS` applies
+unchanged, so a model too slow for the budget degrades to a counsellor
+hand-off rather than hanging the conversation.
+
+### The built-in advisor (tests only)
+
+Members never see this. It is the deterministic stand-in CI runs against —
+instant, free, no daemon — and it is reachable only by setting
+`AI_PROVIDER=builtin` outright. ADR 0013 has why it left the runtime.
+
+It reads the member's profile — credentials, training,
 education, experience, all minimised by the Customer Data Adapter exactly as
 they would be for a managed model — and composes an answer, asking the pathway
 recommender which next steps actually follow. Two members get different

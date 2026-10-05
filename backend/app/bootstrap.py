@@ -18,7 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import Base, SessionLocal, engine
-from app.models import KnowledgeArticle, LegacyMemberMaster, User
+from app.models import KnowledgeArticle, LegacyMemberMaster, MemberRecordItem, User
 from app.security import ROLE_AGENT, ROLE_CUSTOMER, hash_password
 
 logger = logging.getLogger("app.bootstrap")
@@ -95,32 +95,66 @@ KNOWLEDGE_ARTICLES: list[tuple[str, str, str]] = [
 # Synthetic personnel records, in the shape the legacy system stores them.
 # Columns: member number, user id, branch, pay grade, specialty, years served,
 # days until separation, completed training, credentials held, open cases.
+#
+# Training and credentials are deliberately empty. The personnel feed is
+# read-only in this platform, so anything seeded there is something a member
+# can see on their profile and cannot remove -- which is confusing when the
+# rest of the profile is theirs to edit, and wrong for a demonstration where
+# the point is to build a profile up from nothing. A member starts empty and
+# adds what they have; the service, pay grade and separation date stay,
+# because those are facts about the posting rather than claims about them.
 _MEMBER_RECORDS = [
-    (
-        "MBR-100241",
-        MEMBER_ID,
-        "ARMY",
-        "E5",
-        "25B",
-        6,
-        120,
-        "Basic Leader Course;Network Administration Course;Information Assurance Fundamentals",
-        "CompTIA A+",
-        1,
-    ),
-    (
-        "MBR-100987",
-        MEMBER_TWO_ID,
-        "USN",
-        "E6",
-        "HM",
-        9,
-        300,
-        "Hospital Corpsman A School;Emergency Medical Technician Course;Instructor Training",
-        "EMT-Basic",
-        0,
-    ),
+    ("MBR-100241", MEMBER_ID, "ARMY", "E5", "25B", 6, 120, "", "", 1),
+    ("MBR-100987", MEMBER_TWO_ID, "USN", "E6", "HM", 9, 300, "", "", 0),
 ]
+
+# The demo profile, seeded as the member's OWN entries rather than as
+# personnel rows.
+#
+# These used to be seeded into the legacy record, which made them read-only:
+# they showed up under "From your service record" with no Remove beside them,
+# in a panel whose whole promise is that the member controls what is on it.
+# Seeding them here instead gives a populated profile to open with -- so the
+# recommender has something to work from on the first screen -- while every
+# line stays the member's to edit or delete. The personnel feed stays empty
+# and stays read-only; nothing about ADR 0007 changes.
+#
+# Invented, like everything else here: no real person, programme or employer.
+_SEED_PROFILE: dict[uuid.UUID, list[tuple[str, str, str | None]]] = {
+    MEMBER_ID: [
+        ("CREDENTIAL", "CompTIA A+", "CompTIA"),
+        ("TRAINING", "Basic Leader Course", "U.S. Army"),
+        ("TRAINING", "Network Administration Course", "U.S. Army"),
+        ("TRAINING", "Information Assurance Fundamentals", "U.S. Army"),
+        ("EXPERIENCE", "Information Technology Specialist", "U.S. Army"),
+    ],
+    MEMBER_TWO_ID: [
+        ("CREDENTIAL", "Basic Life Support", "American Heart Association"),
+        ("TRAINING", "Hospital Corpsman A School", "U.S. Navy"),
+        ("EXPERIENCE", "Hospital Corpsman", "U.S. Navy"),
+    ],
+}
+
+
+def _seed_profile_for(db: Session, user_id: uuid.UUID) -> None:
+    """Give a newly created account its starting profile.
+
+    Called only on the branch that creates the user, which is what makes the
+    entries deletable in the way members expect: seeding on every startup, or
+    whenever the profile happens to be empty, would quietly restore anything
+    they removed -- the unremovable behaviour this was meant to end. Seeded
+    once, at account creation, and never again.
+    """
+    for kind, name, organization in _SEED_PROFILE.get(user_id, []):
+        db.add(
+            MemberRecordItem(
+                user_id=user_id,
+                kind=kind,
+                name=name,
+                organization=organization,
+                source="MANUAL",
+            )
+        )
 
 
 def create_schema() -> None:
@@ -155,6 +189,7 @@ def seed(db: Session) -> None:
                     password_hash=hash_password(default_password),
                 )
             )
+            _seed_profile_for(db, user_id)
             continue
 
         # The seeded accounts are matched by id, so a row created by an earlier

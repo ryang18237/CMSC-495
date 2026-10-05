@@ -142,7 +142,7 @@ Authentication failures return **401**.
 | `status` | Enum | `ANSWERED`, `ESCALATED` or `ERROR` |
 | `escalationReason` | Enum \| null | Null unless escalation occurs |
 | `timestamp` | ISO 8601 | UTC |
-| `answeredBy` | String \| null | Provider that answered (`builtin`, `anthropic`, `openai`); null when escalated |
+| `answeredBy` | String \| null | Provider that answered (`ollama`, `anthropic`, `openai`); null when escalated |
 
 **Escalation is rule-based, not confidence-based.** The application does not
 use an undefined numeric AI confidence score. `status` becomes `ESCALATED`
@@ -396,22 +396,28 @@ cannot be probed.
 ## GET /api/v1/ai/providers
 
 Any signed-in user. Lists the models a member can pick in the chat: the
-built-in advisor, which needs no key and is therefore always present, plus
-every managed provider this server has a key for. **Keys are never returned**
+local model when Ollama is running with its model pulled, plus every managed
+provider this server has a key for. The list can be empty, which means no
+model is reachable and the assistant will say so rather than answer. **Keys are never returned**
 — only a name and a model id — and a member is never asked for one.
 
 ```json
 [
-  { "providerId": "builtin", "label": "Built-in advisor", "model": "skillbridge-advisor-v3", "isDefault": false },
+  { "providerId": "ollama", "label": "Local model", "model": "llama3.2", "isDefault": false },
   { "providerId": "anthropic", "label": "Claude", "model": "claude-haiku-4-5-20251001", "isDefault": true },
   { "providerId": "openai", "label": "ChatGPT", "model": "gpt-6-luna", "isDefault": false }
 ]
 ```
 
-On a server with no keys configured the list holds `builtin` alone, and the
-platform is fully usable. `isDefault` marks the provider used when a message
-names none: `AI_PROVIDER` when its key is set, otherwise the built-in advisor.
-`mock` is accepted as the old name for `builtin`.
+On a server with no keys configured the list holds `ollama` alone when the
+local model is running, and is empty when it is not — in which case the
+assistant declines to answer and escalates rather than inventing one.
+`isDefault` marks the provider used when a message names none: `AI_PROVIDER`
+when it is reachable, otherwise the first that is.
+
+`builtin` is never listed. It is the deterministic test provider and is
+reachable only by setting `AI_PROVIDER=builtin` on the server (`mock` is
+accepted as its older name). See ADR 0013.
 
 ---
 

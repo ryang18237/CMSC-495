@@ -54,6 +54,15 @@ and the web client on port 5173, and opens the browser.
 | Python | 3.10 or newer | `python3 --version` (Windows: `python --version`) |
 | Node.js | 18 or newer (LTS) | `node --version` |
 | Git | any recent | `git --version` |
+| Ollama | optional | `ollama --version` |
+
+Ollama is the only optional one, and the only one `run.py` will install for
+you: on startup it offers to install Ollama if it is absent, starts the daemon
+if it is present but stopped, and pulls `llama3.2` if it has never been
+pulled. Answer no, or pass `--no-local-model`, and the assistant will tell
+members it cannot reach a model rather than answering from a template. `run.py` prints which of the two is in use at startup. To
+install Ollama yourself instead, take it from <https://ollama.com> and run
+`ollama pull llama3.2`.
 
 ### macOS
 
@@ -160,8 +169,7 @@ Run `python run.py` again; it reports **PostgreSQL is reachable**.
 ## 4. Configuration
 
 You do not need a `backend/.env` to run the platform, and **you do not need an
-API key**. Without either, the built-in advisor answers and every feature
-works. The app uses safe development defaults and generates a local signing
+API key**. The local model needs neither, and `run.py` sets it up. The app uses safe development defaults and generates a local signing
 secret in `backend/.jwt_secret`. Create `.env` only to change something;
 `backend/.env.example` lists every setting.
 
@@ -171,7 +179,7 @@ secret in `backend/.jwt_secret`. Create `.env` only to change something;
 | `JWT_SECRET` | generated locally | Token signing key — never commit a real one |
 | `JWT_EXPIRE_MINUTES` | 60 | Session length |
 | `CORS_ORIGINS` | `http://localhost:5173` | Allowed browser origins |
-| `AI_PROVIDER` | `builtin` | Default model: `builtin` (no key), `anthropic` or `openai` |
+| `AI_PROVIDER` | `auto` | `auto` (the local model), `anthropic`, `openai`, or `builtin` for the deterministic test provider |
 | `ANTHROPIC_API_KEY` | empty | Optional. A key on the **server** enables Claude for everyone using it |
 | `ANTHROPIC_MODEL` | `claude-haiku-4-5-20251001` | Any current Claude model id |
 | `OPENAI_API_KEY` | empty | Optional. A key on the **server** enables ChatGPT for everyone using it |

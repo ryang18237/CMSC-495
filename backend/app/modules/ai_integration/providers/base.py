@@ -2,6 +2,7 @@
 
 from abc import ABC, abstractmethod
 
+from app.config import get_settings
 from app.modules.ai_integration.contracts import Prompt, ProviderResponse
 
 
@@ -22,3 +23,14 @@ class AIProvider(ABC):
     def health(self) -> str:
         """Report provider readiness: 'ok', 'degraded' or 'unavailable'."""
         return "ok"
+
+    @property
+    def retry_budget_seconds(self) -> float:
+        """How long the service may keep retrying this provider.
+
+        A property rather than one global setting because the right answer
+        depends on what is at the other end. Retrying a hosted API after a
+        network blip is sensible and cheap. Retrying a local model that was
+        simply still thinking just makes the member wait twice.
+        """
+        return get_settings().ai_retry_budget_seconds

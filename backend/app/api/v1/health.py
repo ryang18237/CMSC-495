@@ -31,6 +31,11 @@ def health(response: Response, db: Session = Depends(get_db)) -> HealthResponse:
     ai_service = AIIntegrationService()
     dependencies["ai_provider"] = ai_service.provider_health()
     dependencies["ai_provider_name"] = ai_service.provider_name
+    # The budget the provider will actually honour. A turn that dies at
+    # exactly the old 8-second default, on a machine configured for 120, is
+    # the signature of a stale process or a stale checkout -- and there was
+    # no way to see which number was live without reading the source.
+    dependencies["ai_timeout_seconds"] = f"{ai_service.provider_timeout_seconds:.0f}"
 
     cache = get_cache()
     dependencies["cache"] = cache.health()
@@ -40,7 +45,9 @@ def health(response: Response, db: Session = Depends(get_db)) -> HealthResponse:
         status = "unavailable"
         response.status_code = 503
     elif dependencies["ai_provider"] != "ok":
-        # The platform still answers: failed AI calls fall back and escalate.
+        # Degraded rather than unavailable: sign-in, the profile, the
+        # recommender and the counsellor queue all still work. Only the
+        # assistant cannot answer, and it says so and escalates.
         status = "degraded"
     else:
         status = "healthy"

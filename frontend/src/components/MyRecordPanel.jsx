@@ -68,6 +68,7 @@ export default function MyRecordPanel({ session, onChange, refreshKey = 0 })
   const [name, setName] = useState('')
   const [organization, setOrganization] = useState('')
   const [error, setError] = useState(null)
+  const nameRef = useRef(null)
   const [busy, setBusy] = useState(false)
   const [candidates, setCandidates] = useState(null)
   const [chosen, setChosen] = useState({})
@@ -99,6 +100,24 @@ export default function MyRecordPanel({ session, onChange, refreshKey = 0 })
     if (onChange)
     {
       onChange()
+    }
+  }
+
+  /**
+   * Point the one add form at a kind and put the cursor in it.
+   *
+   * One form rather than five keeps a half-typed entry from being lost when
+   * someone changes their mind about which card it belongs in, and keeps the
+   * panel from growing five identical forms.
+   */
+  function startAdding(nextKind)
+  {
+    setKind(nextKind)
+    setError(null)
+    if (nameRef.current)
+    {
+      nameRef.current.focus()
+      nameRef.current.scrollIntoView({ block: 'center', behavior: 'smooth' })
     }
   }
 
@@ -197,6 +216,9 @@ export default function MyRecordPanel({ session, onChange, refreshKey = 0 })
   }
 
   const official = record?.serviceRecord
+  const officialItems = official
+    ? [...official.credentials, ...official.completedTraining]
+    : []
   const added = record?.added ?? []
   const completeness = record?.completeness
   const selectedCount = candidates ? candidates.filter((_, index) => chosen[index]).length : 0
@@ -243,11 +265,13 @@ export default function MyRecordPanel({ session, onChange, refreshKey = 0 })
       )}
 
       <div className="profile-grid">
-        {official && (
+        {/* The personnel feed supplies the posting, not a history. When it
+            has nothing to show, an empty read-only card is just a dead box. */}
+        {official && officialItems.length > 0 && (
           <div className="record-group official">
             <h3 className="section">From your service record</h3>
             <ul className="record-list official">
-              {[...official.credentials, ...official.completedTraining].map((item) => (
+              {officialItems.map((item) => (
                 <li key={item}>{item}</li>
               ))}
             </ul>
@@ -284,10 +308,20 @@ export default function MyRecordPanel({ session, onChange, refreshKey = 0 })
                 ))}
               </ul>
             )}
+            {/* The form used to live alone at the bottom of the panel, which
+                left every card looking like a read-only list. */}
+            <button
+              type="button"
+              className="secondary record-add-here"
+              onClick={() => startAdding(groupKind)}
+            >
+              + Add {KIND_LABELS[groupKind].toLowerCase()}
+            </button>
           </div>
         ))}
       </div>
 
+      <h3 className="section">Add to your profile</h3>
       <form className="record-add" onSubmit={add}>
         <label className="visually-hidden" htmlFor="record-kind">Type</label>
         <select id="record-kind" value={kind} onChange={(event) => setKind(event.target.value)}>
@@ -300,6 +334,7 @@ export default function MyRecordPanel({ session, onChange, refreshKey = 0 })
         <label className="visually-hidden" htmlFor="record-name">Name</label>
         <input
           id="record-name"
+          ref={nameRef}
           value={name}
           maxLength={200}
           placeholder={PLACEHOLDERS[kind].name}
